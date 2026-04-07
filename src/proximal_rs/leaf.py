@@ -1,0 +1,1 @@
+# pylidar-tls-canopy wrapper: scan → gap frac → PAVD → PAI
