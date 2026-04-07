@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dehar"
+version = "0.1.0"
+description = "DE-Har SPAC drought cascade analysis"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "xarray>=2023.1",
+    "matplotlib>=3.7",
+    "scipy>=1.10",
+    "ruptures>=1.1",
+]
+
+[tool.setuptools]
+packages = [
+    "dehar",
+    "dehar.atmosphere",
+    "dehar.physiology",
+    "dehar.soil",
+    "dehar.utils",
+    "dehar.proximal_rs",
+    "dehar.satellite",
+]
+
+[tool.setuptools.package-dir]
+dehar = "src"
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
