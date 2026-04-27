@@ -7,6 +7,11 @@ SITE_LON = 7.6010
 SITE_NAME = "DE-Har"
 SITE_ELEVATION_M = 201
 
+# Coordinate reference system and tower location in projected coords
+SITE_CRS = "EPSG:32632"  # UTM zone 32N
+SITE_UTM_X = 395509.71   # easting [m]  — pyproj(7.6010°E, 47.9344°N → EPSG:32632)
+SITE_UTM_Y = 5309956.22  # northing [m]
+
 SPECIES_CODES = {
     "C. betulus": "carpinus",
 }
