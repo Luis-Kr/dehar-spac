@@ -123,12 +123,17 @@ def _changepoints(y: np.ndarray, pen_scale: float, min_size: int) -> list[int]:
 
 
 def detect_onset(
-    y: np.ndarray, direction: str, pen_scale: float, min_size: int
+    y: np.ndarray, direction: str, pen_scale: float, min_size: int,
+    rule: str = "acute-event",
 ) -> int | None:
     """Return the index of the onset change-point, or None if no response.
 
-    Onset = first change-point whose segment-mean shift matches ``direction``
-    and exceeds ~1 sigma in magnitude.
+    A change-point qualifies if its segment-mean shift goes in the stress
+    ``direction`` and exceeds ~1 sigma. Among qualifying change-points:
+      - ``first-departure``: the earliest one (when the signal first leaves its
+        pre-event state — captures a gradual build-up).
+      - ``acute-event``: the one with the largest stress-direction jump (the
+        dominant shift — centres on the acute event).
     """
     n = len(y)
     cps = _changepoints(y, pen_scale, min_size)
@@ -137,15 +142,18 @@ def detect_onset(
     bounds = [0, *cps, n]
     seg_mean = [y[bounds[i]:bounds[i + 1]].mean() for i in range(len(bounds) - 1)]
     thresh = _sigma_hat(y)
-    for i, cp in enumerate(cps):  # cps are ordered in time
+    qualifying = []  # (cp, stress_magnitude), cps already ordered in time
+    for i, cp in enumerate(cps):
         delta = seg_mean[i + 1] - seg_mean[i]
-        if abs(delta) < thresh:
-            continue
-        if direction == "auto" \
-                or (direction == "increase" and delta > 0) \
-                or (direction == "decrease" and delta < 0):
-            return cp
-    return None
+        sd = abs(delta) if direction == "auto" else \
+            (delta if direction == "increase" else -delta)
+        if sd >= thresh:
+            qualifying.append((cp, sd))
+    if not qualifying:
+        return None
+    if rule == "first-departure":
+        return qualifying[0][0]
+    return max(qualifying, key=lambda t: t[1])[0]  # acute-event: biggest jump
 
 
 def _block_resample(resid: np.ndarray, rng: np.random.Generator, block: int) -> np.ndarray:
@@ -165,9 +173,10 @@ def bootstrap_onset(
     n_boot: int,
     block: int,
     seed: int,
+    rule: str,
 ) -> tuple[int | None, tuple[int, int] | None, np.ndarray]:
     """Bootstrap CI for the onset index. Returns (onset, (lo, hi), boot_onsets)."""
-    onset = detect_onset(y, direction, pen_scale, min_size)
+    onset = detect_onset(y, direction, pen_scale, min_size, rule)
     if onset is None:
         return None, None, np.array([])
     # Step model = piecewise-constant fit over ALL change-points (keeps recovery).
@@ -181,7 +190,7 @@ def bootstrap_onset(
     boots = []
     for _ in range(n_boot):
         synth = fitted + _block_resample(resid, rng, block)
-        o = detect_onset(synth, direction, pen_scale, min_size)
+        o = detect_onset(synth, direction, pen_scale, min_size, rule)
         if o is not None:
             boots.append(o)
     boots = np.asarray(boots, dtype=int)
@@ -199,7 +208,8 @@ def bootstrap_onset(
 # --------------------------------------------------------------------------- #
 # Driver                                                                      #
 # --------------------------------------------------------------------------- #
-def run(df: pd.DataFrame, pen_scale: float, n_boot: int, block: int, seed: int) -> pd.DataFrame:
+def run(df: pd.DataFrame, pen_scale: float, n_boot: int, block: int, seed: int,
+        rule: str) -> pd.DataFrame:
     rows = []
     for i, st in enumerate(STREAMS):
         if st.column not in df.columns:
@@ -208,7 +218,7 @@ def run(df: pd.DataFrame, pen_scale: float, n_boot: int, block: int, seed: int) 
         y, dates = s.to_numpy(float), s.index
         min_size = max(2, min(5, len(y) // 4))
         onset, ci, _ = bootstrap_onset(
-            y, st.direction, pen_scale, min_size, n_boot, block, seed + i
+            y, st.direction, pen_scale, min_size, n_boot, block, seed + i, rule
         )
         rows.append({
             "stream": st.name, "group": st.group, "n_obs": len(y),
@@ -221,7 +231,7 @@ def run(df: pd.DataFrame, pen_scale: float, n_boot: int, block: int, seed: int) 
     return out.sort_values("onset_date", na_position="last").reset_index(drop=True)
 
 
-def plot_caterpillar(res: pd.DataFrame, path: Path) -> None:
+def plot_caterpillar(res: pd.DataFrame, path: Path, subtitle: str = "") -> None:
     r = res.dropna(subset=["onset_date"]).reset_index(drop=True)
     fig, ax = plt.subplots(figsize=(9, 5))
     for i, row in r.iterrows():
@@ -236,7 +246,7 @@ def plot_caterpillar(res: pd.DataFrame, path: Path) -> None:
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %d"))
     ax.xaxis.set_major_locator(mdates.WeekdayLocator(byweekday=mdates.MO))
     ax.set(xlabel="onset date (95% CI)",
-           title="DE-Har 2025 stress-cascade onset ordering")
+           title=f"DE-Har 2025 stress-cascade onset ordering\n{subtitle}")
     handles = [plt.Line2D([], [], color=v, marker="o", ls="", label=k)
                for k, v in GROUP_COLOR.items()]
     ax.legend(handles=handles, fontsize=8, loc="lower right")
@@ -251,29 +261,35 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--csv", type=Path, default=DEFAULT_CSV)
     p.add_argument("--start", default="2025-07-01")
     p.add_argument("--end", default="2025-09-15")
+    p.add_argument("--onset-rule", choices=["first-departure", "acute-event"],
+                   default="acute-event",
+                   help="first significant departure, or the dominant stress shift")
     p.add_argument("--pen-scale", type=float, default=3.0,
                    help="PELT penalty scale (higher = fewer change-points)")
     p.add_argument("--n-boot", type=int, default=1000)
     p.add_argument("--block", type=int, default=5, help="bootstrap block length (days)")
     p.add_argument("--seed", type=int, default=SEED)
-    p.add_argument("--fig", type=Path, default=DEFAULT_FIG)
-    p.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    p.add_argument("--fig", type=Path, default=None)
+    p.add_argument("--out", type=Path, default=None)
     a = p.parse_args(argv)
 
+    fig = a.fig or REPO_ROOT / "figures" / f"cascade_onset_caterpillar_{a.onset_rule}.png"
+    out = a.out or REPO_ROOT / "data" / "processed" / f"cascade_onsets_{a.onset_rule}.csv"
+
     df = load_streams(a.csv, a.start, a.end)
-    res = run(df, a.pen_scale, a.n_boot, a.block, a.seed)
+    res = run(df, a.pen_scale, a.n_boot, a.block, a.seed, a.onset_rule)
 
     show = res.copy()
     for c in ("onset_date", "ci_lo", "ci_hi"):
         show[c] = show[c].dt.strftime("%Y-%m-%d")
-    print(f"Window {a.start} .. {a.end}  |  penalty scale {a.pen_scale}\n")
+    print(f"Window {a.start} .. {a.end}  |  rule {a.onset_rule}  |  pen {a.pen_scale}\n")
     print(show[["stream", "group", "n_obs", "onset_date", "ci_lo", "ci_hi", "ci_days"]]
           .to_string(index=False, na_rep="—"))
 
-    a.out.parent.mkdir(parents=True, exist_ok=True)
-    res.to_csv(a.out, index=False)
-    plot_caterpillar(res, a.fig)
-    print(f"\nWrote {a.out}\nWrote {a.fig}")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    res.to_csv(out, index=False)
+    plot_caterpillar(res, fig, subtitle=f"onset rule: {a.onset_rule}")
+    print(f"\nWrote {out}\nWrote {fig}")
 
 
 if __name__ == "__main__":
