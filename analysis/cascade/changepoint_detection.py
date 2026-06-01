@@ -328,11 +328,11 @@ def plot_grid_stability(grid: pd.DataFrame, summary: pd.DataFrame, path: Path) -
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description="DE-Har cascade onset detection")
     p.add_argument("--csv", type=Path, default=DEFAULT_CSV)
-    p.add_argument("--start", default="2025-08-01")
+    p.add_argument("--start", default="2025-07-20")
     p.add_argument("--end", default="2025-09-15")
     p.add_argument("--onset-rule", choices=["first-departure", "acute-event"],
                    default="acute-event")
-    p.add_argument("--model", default="l2", help="ruptures cost model (single run)")
+    p.add_argument("--model", default="rbf", help="ruptures cost model (single run)")
     p.add_argument("--pen-scale", type=float, default=1.0)
     p.add_argument("--n-boot", type=int, default=1000)
     p.add_argument("--block", type=int, default=5)
