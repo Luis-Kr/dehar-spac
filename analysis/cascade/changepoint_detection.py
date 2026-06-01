@@ -71,22 +71,33 @@ class Stream:
     group: str  # forcing | physiology | proximal | flux | satellite
 
 
-STREAMS: list[Stream] = [
-    Stream("VPD (max)", "vpd_hpa_max", "increase", "forcing"),
-    Stream("Soil moisture", "sm_pct_mean", "decrease", "forcing"),
-    Stream("Predawn SWP", "swp_mpa_predawn_mean", "decrease", "physiology"),
-    Stream("Tree water deficit", "twd_um_mean", "increase", "physiology"),
-    Stream("Sapflow", "sapflow_jscm3cm2d_mean", "decrease", "physiology"),
-    Stream("GNSS-T VOD", "vod_mean", "decrease", "proximal"),
-    Stream("Leaf angle", "leaf_angle", "increase", "proximal"),
-    Stream("PAI", "pai_total_sg", "decrease", "proximal"),
-    Stream("GCC", "gcc_p90_mean", "decrease", "proximal"),
-    Stream("ET", "et_mmd_mean", "decrease", "flux"),
-    Stream("GPP", "gpp_umolm2s_mean", "decrease", "flux"),
-    Stream("S2 NDVI", "s2_ndvi_raw", "decrease", "satellite"),
-    Stream("S2 NDII (water)", "s2_ndii_raw", "decrease", "satellite"),
-    Stream("S1 cross-ratio", "s1_cr_raw", "auto", "satellite"),
-]
+def make_streams(leaf_angle: str = "separate") -> list[Stream]:
+    """Ordered stream list. ``leaf_angle`` controls the two AngleCams:
+    'separate' (default) keeps cam65 and cam67 as distinct streams — they sit at
+    different heights and can respond at different speeds; 'mean' averages them.
+    """
+    leaf = (
+        [Stream("Leaf angle (mean)", "leaf_angle", "increase", "proximal")]
+        if leaf_angle == "mean"
+        else [Stream("Leaf angle cam65", "leaf_angle_cam65_mean", "increase", "proximal"),
+              Stream("Leaf angle cam67", "leaf_angle_cam67_mean", "increase", "proximal")]
+    )
+    return [
+        Stream("VPD (max)", "vpd_hpa_max", "increase", "forcing"),
+        Stream("Soil moisture", "sm_pct_mean", "decrease", "forcing"),
+        Stream("Predawn SWP", "swp_mpa_predawn_mean", "decrease", "physiology"),
+        Stream("Tree water deficit", "twd_um_mean", "increase", "physiology"),
+        Stream("Sapflow", "sapflow_jscm3cm2d_mean", "decrease", "physiology"),
+        Stream("GNSS-T VOD", "vod_mean", "decrease", "proximal"),
+        *leaf,
+        Stream("PAI", "pai_total_sg", "decrease", "proximal"),
+        Stream("GCC", "gcc_p90_mean", "decrease", "proximal"),
+        Stream("ET", "et_mmd_mean", "decrease", "flux"),
+        Stream("GPP", "gpp_umolm2s_mean", "decrease", "flux"),
+        Stream("S2 NDVI", "s2_ndvi_raw", "decrease", "satellite"),
+        Stream("S2 NDII (water)", "s2_ndii_raw", "decrease", "satellite"),
+        Stream("S1 cross-ratio", "s1_cr_raw", "auto", "satellite"),
+    ]
 
 GROUP_COLOR = {
     "forcing": "#8c8c8c", "physiology": "#1b7837", "proximal": "#2166ac",
@@ -198,10 +209,10 @@ def _min_size(n: int) -> int:
 # --------------------------------------------------------------------------- #
 # Single run (with bootstrap CI)                                              #
 # --------------------------------------------------------------------------- #
-def run(df: pd.DataFrame, model: str, pen_scale: float, n_boot: int,
-        block: int, seed: int, rule: str) -> pd.DataFrame:
+def run(df: pd.DataFrame, streams: list[Stream], model: str, pen_scale: float,
+        n_boot: int, block: int, seed: int, rule: str) -> pd.DataFrame:
     rows = []
-    for i, st in enumerate(STREAMS):
+    for i, st in enumerate(streams):
         if st.column not in df.columns:
             continue
         s = df[st.column].dropna()
@@ -248,10 +259,10 @@ def plot_caterpillar(res: pd.DataFrame, path: Path, subtitle: str = "") -> None:
 # --------------------------------------------------------------------------- #
 # Grid search (penalty x cost function) for ordering robustness               #
 # --------------------------------------------------------------------------- #
-def grid_search(df: pd.DataFrame, rule: str, models: list[str],
-                pens: list[float]) -> pd.DataFrame:
+def grid_search(df: pd.DataFrame, streams: list[Stream], rule: str,
+                models: list[str], pens: list[float]) -> pd.DataFrame:
     rows = []
-    for st in STREAMS:
+    for st in streams:
         if st.column not in df.columns:
             continue
         s = df[st.column].dropna()
@@ -332,6 +343,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--end", default="2025-09-15")
     p.add_argument("--onset-rule", choices=["first-departure", "acute-event"],
                    default="acute-event")
+    p.add_argument("--leaf-angle", choices=["separate", "mean"], default="separate",
+                   help="keep the two AngleCams separate (default) or average them")
     p.add_argument("--model", default="rbf", help="ruptures cost model (single run)")
     p.add_argument("--pen-scale", type=float, default=1.0)
     p.add_argument("--n-boot", type=int, default=1000)
@@ -342,10 +355,11 @@ def main(argv: list[str] | None = None) -> None:
     a = p.parse_args(argv)
 
     df = load_streams(a.csv, a.start, a.end)
-    print(f"Window {a.start} .. {a.end}  |  rule {a.onset_rule}")
+    streams = make_streams(a.leaf_angle)
+    print(f"Window {a.start} .. {a.end}  |  rule {a.onset_rule}  |  leaf-angle {a.leaf_angle}")
 
     if a.grid:
-        grid = grid_search(df, a.onset_rule, GRID_MODELS, GRID_PENS)
+        grid = grid_search(df, streams, a.onset_rule, GRID_MODELS, GRID_PENS)
         summ = stability_summary(grid)
         fig = REPO_ROOT / "figures" / f"cascade_onset_grid_{a.onset_rule}.png"
         out = REPO_ROOT / "data" / "processed" / f"cascade_onset_grid_{a.onset_rule}.csv"
@@ -364,7 +378,7 @@ def main(argv: list[str] | None = None) -> None:
         print(f"\nWrote {out}\nWrote {fig}")
         return
 
-    res = run(df, a.model, a.pen_scale, a.n_boot, a.block, a.seed, a.onset_rule)
+    res = run(df, streams, a.model, a.pen_scale, a.n_boot, a.block, a.seed, a.onset_rule)
     show = res.copy()
     for c in ("onset_date", "ci_lo", "ci_hi"):
         show[c] = show[c].dt.strftime("%Y-%m-%d")
