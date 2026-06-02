@@ -14,6 +14,7 @@ dependencies = [
     "matplotlib>=3.7",
     "scipy>=1.10",
     "ruptures>=1.1",
+    "prosail>=2.0",
 ]
 
 [tool.setuptools]
