@@ -27,9 +27,10 @@ Sentinel-2 index definitions (standard band combinations):
   CIre  (Gitelson 2003)     = B7/B5 - 1
   MTCI  (Dash & Curran 2004)= (B6-B5)/(B5-B4)
   NDII  (Hardisky 1983)     = (B8A-B11)/(B8A+B11)
-Band reflectance is averaged over nominal S2A band windows (not full spectral
-response functions -- a refinement). For red-edge indices (CIre, MTCI) check the
-band choices match the processing pipeline before quoting the explained fraction.
+Band reflectance is convolved with the **real Sentinel-2A MSI spectral response
+functions** (s2a_msi_srf.csv, from pyspectral/ESA RSR). For red-edge indices
+(CIre, MTCI) check the band choices match the processing pipeline before quoting
+the explained fraction.
 
 Run
 ---
@@ -54,9 +55,22 @@ DEFAULT_CSV = REPO_ROOT / "data" / "processed" / "dehar_daily_season_2025_filter
 BASELINE = ("2025-07-28", "2025-08-06")   # recovered, non-stressed
 EVENT = ("2025-08-10", "2025-08-22")      # around the stress peak
 
-# Sentinel-2A nominal band windows (nm).
+# Real Sentinel-2A MSI spectral response functions (committed CSV, extracted from
+# pyspectral / ESA RSR on the 400-2500 nm grid). Falls back to nominal band
+# windows only if the CSV is missing.
+SRF_CSV = Path(__file__).resolve().parent / "s2a_msi_srf.csv"
 BANDS = {"B2": (459, 525), "B4": (650, 680), "B5": (697, 712), "B6": (733, 748),
          "B7": (773, 793), "B8": (780, 886), "B8A": (855, 875), "B11": (1565, 1655)}
+
+
+def _load_srf() -> dict[str, np.ndarray] | None:
+    if not SRF_CSV.exists():
+        return None
+    s = pd.read_csv(SRF_CSV)
+    return {b: s[b].to_numpy(float) for b in s.columns if b != "wavelength_nm"}
+
+
+_SRF = _load_srf()
 # Fixed leaf/canopy/geometry (everything except leaf angle is held constant).
 FIXED = dict(n=1.5, cab=45.0, car=10.0, cbrown=0.0, cw=0.012, cm=0.008, ant=0.0,
              hspot=0.05, tts=39.0, tto=3.0, psi=0.0)
@@ -75,6 +89,9 @@ NIR_SENSITIVE = {"ndvi", "kndvi", "evi", "nirv", "savi", "ndii"}  # vs red-edge 
 
 
 def _bands(rho: np.ndarray) -> dict[str, float]:
+    if _SRF is not None:  # SRF-weighted band reflectance: sum(rho*srf)/sum(srf)
+        return {b: float((rho * r).sum() / r.sum()) if r.sum() > 0 else float("nan")
+                for b, r in _SRF.items()}
     return {k: float(rho[lo - 400:hi - 400 + 1].mean()) for k, (lo, hi) in BANDS.items()}
 
 
