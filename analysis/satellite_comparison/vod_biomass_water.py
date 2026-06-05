@@ -49,8 +49,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CSV = REPO_ROOT / "data" / "processed" / "dehar_daily_season_2025_filtered.csv"
 SEASON = ("2025-05-01", "2025-10-31")
 EVENT = ("2025-08-07", "2025-08-20")          # the hot-dry event
-CALIB = ("2025-05-01", "2025-07-15")          # non-stressed window for the biomass fit
 BASELINE_WINDOW = 45                          # days, for the PAI-free cross-check
+PSI_THRESH = -0.5                             # stem Psi (MPa): VOD<->Psi tightens below this
 
 VOD, PAI, PSI, SM = "vod_mean", "pai_total_sg", "swp_mpa_predawn_mean", "sm_pct_mean"
 
@@ -201,6 +201,59 @@ def plot_validation(df, vw, path):
     fig.savefig(path, dpi=140); plt.close(fig)
 
 
+def regime_table(df: pd.DataFrame, vw: pd.Series, thr: float = PSI_THRESH) -> pd.DataFrame:
+    """VOD<->Psi correlation split at the stem-Psi threshold (stressed vs not)."""
+    work = df.assign(vod_water=vw)
+    rows = []
+    for label, col in [("raw VOD", VOD), ("water-VOD", "vod_water")]:
+        d = work[[col, PSI]].dropna()
+        for rlabel, mask in [(f"Psi<{thr}", d[PSI] < thr), (f"Psi>={thr}", d[PSI] >= thr)]:
+            dd = d[mask]
+            r = stats.pearsonr(dd[col], dd[PSI])[0] if len(dd) >= 3 else np.nan
+            rows.append({"signal": label, "regime": rlabel, "n": len(dd),
+                         "r": round(r, 3) if np.isfinite(r) else np.nan,
+                         "r2": round(r ** 2, 3) if np.isfinite(r) else np.nan})
+    return pd.DataFrame(rows)
+
+
+def plot_threshold(df: pd.DataFrame, vw: pd.Series, path, thr: float = PSI_THRESH):
+    """Scatter VOD vs stem Psi, split at Psi=thr, with a regression line fit on the
+    stressed (Psi<thr) points -- showing the relationship tightens under stress."""
+    work = df.assign(vod_water=vw)
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4.6))
+    for ax, (col, lab, color) in zip(
+            axes, [(VOD, "raw VOD", "#8c510a"), ("vod_water", "water-VOD", "#2166ac")]):
+        d = work[[col, PSI]].dropna()
+        wet, dry = d[d[PSI] >= thr], d[d[PSI] < thr]
+        ax.scatter(wet[PSI], wet[col], s=16, color="0.65", alpha=0.5,
+                   label=f"Psi >= {thr} (n={len(wet)})")
+        ax.scatter(dry[PSI], dry[col], s=22, color=color, alpha=0.85,
+                   label=f"Psi < {thr} (n={len(dry)})")
+        r_all = stats.pearsonr(d[col], d[PSI])[0]
+        ann = f"all r={r_all:.2f}"
+        if len(dry) >= 3:
+            lr = stats.linregress(dry[PSI], dry[col])
+            xs = np.array([dry[PSI].min(), dry[PSI].max()])
+            ax.plot(xs, lr.intercept + lr.slope * xs, "-", color=color, lw=2.2)
+            ann += f"  |  Psi<{thr}: r={lr.rvalue:.2f} (slope {lr.slope:.3f})"
+        if len(wet) >= 3:
+            ax.plot(*_fitline(wet[PSI], wet[col]), ":", color="0.55", lw=1.4)
+            ann += f"  |  Psi>={thr}: r={stats.pearsonr(wet[col], wet[PSI])[0]:.2f}"
+        ax.axvline(thr, color="0.5", ls="--", lw=1)
+        ax.set(xlabel="predawn stem Psi (MPa)", ylabel=lab, title=f"{lab}\n{ann}")
+        ax.legend(fontsize=8, loc="best")
+    fig.suptitle("VOD-stem Psi relationship tightens under stress (Psi < -0.5 MPa)")
+    fig.tight_layout(rect=(0, 0, 1, 0.94))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=140); plt.close(fig)
+
+
+def _fitline(x, y):
+    lr = stats.linregress(x, y)
+    xs = np.array([x.min(), x.max()])
+    return xs, lr.intercept + lr.slope * xs
+
+
 def plot_cr(cr: pd.DataFrame, path):
     fig, ax = plt.subplots(figsize=(9, 5))
     x = np.arange(len(cr)); w = 0.35
@@ -250,6 +303,10 @@ def main(argv: list[str] | None = None) -> None:
     print(f"  -> full-season: water-VOD {'BEATS' if ok else 'does NOT beat'} raw VOD "
           f"against stem Psi.\n")
 
+    reg = regime_table(df, vw)
+    print(f"VOD<->stem Psi by regime (relationship tightens when Psi < {PSI_THRESH} MPa):")
+    print(reg.to_string(index=False), "\n")
+
     mom = momen_models(df)
     print("Momen replication (does psi add power beyond PAI?):")
     print(mom.to_string(index=False), "\n")
@@ -276,6 +333,7 @@ def main(argv: list[str] | None = None) -> None:
     proc = REPO_ROOT / "data" / "processed"
     plot_decomposition(df, a0, b0, vw, vw_base, figs / "vod_biomass_water_decomposition.png")
     plot_validation(df, vw, figs / "vod_biomass_water_validation.png")
+    plot_threshold(df, vw, figs / "vod_biomass_water_threshold.png")
     if not cr.empty:
         plot_cr(cr, figs / "vod_biomass_water_cr_commonality.png")
     proc.mkdir(parents=True, exist_ok=True)
@@ -283,6 +341,7 @@ def main(argv: list[str] | None = None) -> None:
         [VOD, PAI, "vod_biomass_fit", "vod_water", "vod_water_anom", PSI]
     ].to_csv(proc / "vod_biomass_water_decomposition.csv")
     val.to_csv(proc / "vod_biomass_water_validation.csv", index=False)
+    reg.to_csv(proc / "vod_biomass_water_regime.csv", index=False)
     mom.to_csv(proc / "vod_biomass_water_momen.csv", index=False)
     cr.to_csv(proc / "vod_biomass_water_cr_commonality.csv", index=False)
     print(f"Wrote figures to {figs} and CSV summaries to {proc}")
