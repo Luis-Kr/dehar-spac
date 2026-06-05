@@ -48,11 +48,11 @@ from index_sensitivity import _rsq, commonality, z  # noqa: E402
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CSV = REPO_ROOT / "data" / "processed" / "dehar_daily_season_2025_filtered.csv"
 SEASON = ("2025-05-01", "2025-10-31")
-EVENT = ("2025-08-07", "2025-08-20")          # the hot-dry event
-CALIB = ("2025-05-01", "2025-07-15")          # non-stressed window for the biomass fit
-BASELINE_WINDOW = 45                          # days, for the PAI-free cross-check
+EVENT = ("2025-08-01", "2025-08-20")          # the hot-dry event
+CALIB = ("2025-05-01", "2025-10-31")          # non-stressed window for the biomass fit
+BASELINE_WINDOW = 90                          # days, for the PAI-free cross-check
 
-VOD, PAI, PSI, SM = "vod_mean", "pai_total_sg", "swp_mpa_predawn_mean", "sm_pct_mean"
+VOD, PAI, PSI, SM = "vod_mean_sg", "pai_total_sg", "swp_mpa_predawn_mean", "sm_pct_mean"
 
 
 def load(csv: Path, start: str, end: str) -> pd.DataFrame:
