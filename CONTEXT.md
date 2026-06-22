@@ -29,3 +29,22 @@ _Avoid_: camera NDVI, proximal NDVI (unqualified)
 The single greenness series the headline stages consume, selected in
 `paper/config/analysis_config.yaml` and resolved by `paper_common.greenness_col()`. Default =
 PhenoCam GCC, 1-day aggregation.
+
+### Onset & breakpoints (Part A)
+
+**Changepoint**:
+Any raw shift in level detected in a stream by the changepoint search. Mechanism-level and
+unfiltered — most are not interesting on their own.
+_Avoid_: break, shift
+
+**Breakpoint**:
+A *qualifying* changepoint: one whose jump is in the stress direction and large enough to clear
+the stream's own noise floor. The unit whose full-season distribution Part A studies (where do
+breakpoints cluster over June–September?).
+_Avoid_: changepoint (raw, unfiltered), onset (the single elected one)
+
+**Onset**:
+The single breakpoint elected to represent a stream's response — either the earliest
+(first-departure, the headline cascade) or the largest (acute-event). The headline unit; a
+breakpoint collapsed to one date.
+_Avoid_: breakpoint, changepoint

@@ -113,6 +113,19 @@ onset:
   n_boot: 1000
   pai_as_two_rows: true                     # hinge & hemi plotted separately in the caterpillar
 
+  # Exploratory variant (paper/90_sensitivity/breakpoint_distribution.py): instead of
+  # electing ONE onset per stream, show the full-season DISTRIBUTION of all qualifying
+  # breakpoints. Lives here for provenance but NEVER feeds a headline number (alternatives
+  # belong under 90_sensitivity/). pen_scale defaults to the headline value; loosen it for a
+  # richer (multi-breakpoint) distribution via the BP_PEN env override when probing.
+  breakpoint_dist:
+    model: l2                               # same cost model as the headline onset
+    pen_scale: 2.0                          # = headline onset penalty; BP_PEN env overrides for probing
+    # Penalty form = Killick et al. 2012 (PELT), beta = p * log(n); pen_scale multiplies that
+    # BIC-style term. [CONFIRM: paste the verbatim Killick 2012 penalty line from the PDF here.]
+    block: 5                                # residual block-bootstrap block size (= headline)
+    n_boot: 1000                            # bootstrap replicates (= headline onset.n_boot)
+
 # --- Application C: VOD biomass correction -----------------------------------
 appC:
   window: [2025-05-01, 2025-11-30]        # leaf-on incl. autumn senescence (identifies biomass slope)

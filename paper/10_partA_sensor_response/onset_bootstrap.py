@@ -39,7 +39,7 @@ from scipy.stats import kendalltau
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parents[0] / "config"))
-from paper_common import load_config, load_daily, load_event_windows, load_sensors_meta, hornbeam_qc_cams, greenness_col  # noqa: E402
+from paper_common import load_config, load_daily, load_event_windows, load_sensors_meta, hornbeam_qc_cams, greenness_col, paper_style  # noqa: E402
 
 SEED = 20250801
 import os
@@ -103,11 +103,12 @@ def build_streams_and_frame(cfg: dict):
         Stream("PAI hinge (early-warning)", "pai_hinge_hinge_mean_m2m2", "decrease", "proximal"),
         Stream("PAI hemi (bulk)", "pai_hemi_hi_hinge_mean_m2m2", "decrease", "proximal"),
         Stream("GCC (greenness)", "greenness_canonical", "decrease", "proximal"),
+        Stream("PhenoCam NDVI", "ndvi_phenocam_1day_p90", "decrease", "proximal"),
         Stream("ET", "et_sum_mm", "decrease", "flux"),
         Stream("GPP", "gpp_mean_umol_m2_s", "decrease", "flux"),
-        Stream("S2 NDVI", "s2_ndvi_mean", "decrease", "satellite"),
-        Stream("S2 NDII (water)", "s2_ndii_mean", "decrease", "satellite"),
-        Stream("S1 cross-ratio", "s1_asc_cr_mean_dB", "auto", "satellite"),
+        # Satellite streams (S2 NDVI/NDII, S1) intentionally NOT in the Part A cascade:
+        # satellite stress attribution is its own stage (20_appB_satellite_mlr). Part A is the
+        # in-situ + proximal sensor cascade. PhenoCam NDVI (proximal) replaces the satellite NDVI.
     ]
     return streams, df
 
@@ -131,21 +132,35 @@ def _changepoints(y, model, pen_scale, min_size):
     return algo.predict(pen=pen)[:-1]
 
 
-def detect_onset(y, direction, model, pen_scale, min_size, rule):
+def qualifying_breakpoints(y, direction, model, pen_scale, min_size):
+    """All changepoints whose stress-direction jump clears the stream noise floor.
+
+    A *breakpoint* is a PELT changepoint that moves in ``direction`` by at least
+    ``_sigma_hat(y)``. This is the shared filter behind both the single-onset
+    election (``detect_onset``) and the full-season breakpoint distribution
+    (paper/90_sensitivity/breakpoint_distribution.py).
+
+    Returns a list of ``(index, signed_magnitude)`` in changepoint order.
+    """
     n = len(y)
     cps = _changepoints(y, model, pen_scale, min_size)
     if not cps:
-        return None
+        return []
     bounds = [0, *cps, n]
     seg_mean = [y[bounds[i]:bounds[i + 1]].mean() for i in range(len(bounds) - 1)]
     thresh = _sigma_hat(y)
-    qualifying = []
+    out = []
     for i, cp in enumerate(cps):
         delta = seg_mean[i + 1] - seg_mean[i]
         sd = abs(delta) if direction == "auto" else \
             (delta if direction == "increase" else -delta)
         if sd >= thresh:
-            qualifying.append((cp, sd))
+            out.append((cp, sd))
+    return out
+
+
+def detect_onset(y, direction, model, pen_scale, min_size, rule):
+    qualifying = qualifying_breakpoints(y, direction, model, pen_scale, min_size)
     if not qualifying:
         return None
     if rule == "first-departure":
@@ -199,12 +214,14 @@ def _min_size(n):
 def _onset_task(args):
     """Pool worker: one stream's bootstrapped onset. Module-level for picklability."""
     name, group, y, dates, direction, model, pen_scale, n_boot, block, seed, rule = args
-    onset, ci, _ = bootstrap_onset(
+    onset, ci, boots = bootstrap_onset(
         y, direction, model, pen_scale, _min_size(len(y)), n_boot, block, seed, rule)
     od = dates[onset] if onset is not None else pd.NaT
+    draw_dates = dates[boots] if len(boots) else pd.DatetimeIndex([])
     return {"stream": name, "group": group, "n_obs": len(y), "onset_date": od,
             "ci_lo": dates[ci[0]] if ci else pd.NaT,
-            "ci_hi": dates[ci[1]] if ci else pd.NaT}
+            "ci_hi": dates[ci[1]] if ci else pd.NaT,
+            "draw_dates": draw_dates}
 
 
 def run_rule(df, streams, rule, ref_date, model, pen_scale, n_boot, block, seed):
@@ -225,6 +242,17 @@ def run_rule(df, streams, rule, ref_date, model, pen_scale, n_boot, block, seed)
     out["onset_rel_days"] = [(d - ref_date).days if pd.notna(d) else np.nan for d in out.onset_date]
     out["ci_days"] = (out.ci_hi - out.ci_lo).dt.days
     return out.sort_values("onset_date", na_position="last").reset_index(drop=True)
+
+
+def draws_long(res, ref_date):
+    """Tidy one-row-per-replicate table of bootstrap onset draws (swarm + audit)."""
+    rows = []
+    for _, row in res.iterrows():
+        for k, d in enumerate(row.draw_dates):
+            rows.append({"stream": row.stream, "group": row.group, "replicate": k,
+                         "onset_date": d, "onset_rel_days": (d - ref_date).days})
+    return pd.DataFrame(rows, columns=["stream", "group", "replicate",
+                                       "onset_date", "onset_rel_days"])
 
 
 def plot_caterpillar(res, path, ref_date, marks, title):
@@ -249,9 +277,63 @@ def plot_caterpillar(res, path, ref_date, marks, title):
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %d"))
     ax.set(xlabel=f"onset date (95% CI); labels = days vs soil-limit onset {ref_date.date()}",
            title=title)
-    handles = [plt.Line2D([], [], color=v, marker="o", ls="", label=k)
-               for k, v in GROUP_COLOR.items()]
+    present = [g for g in GROUP_COLOR if (r.group == g).any()]
+    handles = [plt.Line2D([], [], color=GROUP_COLOR[g], marker="o", ls="", label=g)
+               for g in present]
     ax.legend(handles=handles, fontsize=8, loc="lower left")
+    fig.tight_layout()
+    fig.savefig(path, dpi=140)
+    plt.close(fig)
+
+
+def plot_swarm(res, path, ref_date, marks, title):
+    """Bee-swarm of bootstrap onset draws: one jittered strip per stream.
+
+    Shows the *shape* of the bootstrap distribution (skew, multimodality from two
+    candidate breakpoints) that the caterpillar's CI bar hides. Median circle +
+    slim 95% interval overlaid; streams with an unstable CI (<50% of bootstraps
+    found an onset) get a hollow median marker and no interval.
+    """
+    r = res.dropna(subset=["onset_date"])
+    r = r[r.draw_dates.apply(len) > 0].reset_index(drop=True)
+    rng = np.random.default_rng(SEED)
+    jitter, alpha, ms = 0.18, 0.15, 2.5
+
+    fig, ax = plt.subplots(figsize=(9.5, 5.5))
+    for label, d, c in marks:
+        ax.axvline(mdates.date2num(pd.Timestamp(d)), color=c, ls="--", lw=1, alpha=0.7)
+        ax.text(mdates.date2num(pd.Timestamp(d)), len(r) - 0.4, label, rotation=90,
+                va="top", ha="right", fontsize=7, color=c)
+    for i, row in r.iterrows():
+        c = GROUP_COLOR[row.group]
+        x = mdates.date2num(row.draw_dates.to_numpy())
+        ax.plot(x, i + rng.uniform(-jitter, jitter, size=len(x)), "o",
+                color=c, ms=ms, alpha=alpha, mec="none", zorder=2)
+        stable = pd.notna(row.ci_lo)
+        if stable:
+            ax.plot([mdates.date2num(row.ci_lo), mdates.date2num(row.ci_hi)], [i, i],
+                    color=c, lw=1.4, alpha=0.9, solid_capstyle="butt", zorder=3)
+            for b in (row.ci_lo, row.ci_hi):
+                ax.plot([mdates.date2num(b)] * 2, [i - 0.12, i + 0.12],
+                        color=c, lw=1.4, alpha=0.9, zorder=3)
+        ax.plot(mdates.date2num(row.onset_date), i, "o", color=c, zorder=4,
+                mfc=(c if stable else "white"), mec=c, mew=1.4)
+        rel = row.onset_rel_days
+        ax.text(mdates.date2num(row.onset_date), i + 0.30,
+                f"{'+' if rel >= 0 else ''}{int(rel)}d", fontsize=7, color=c, ha="center")
+    ax.set_yticks(range(len(r)))
+    ax.set_yticklabels(r.stream)
+    ax.set_ylim(len(r) - 0.5, -0.7)
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %d"))
+    ax.set(xlabel=f"bootstrap onset draws (dot = replicate; bar = 95% interval; "
+                  f"labels = days vs soil-limit onset {ref_date.date()})",
+           title=title)
+    present = [g for g in GROUP_COLOR if (r.group == g).any()]
+    handles = [plt.Line2D([], [], color=GROUP_COLOR[g], marker="o", ls="", label=g)
+               for g in present]
+    handles.append(plt.Line2D([], [], color="0.4", marker="o", ls="", mfc="white",
+                              mew=1.4, label="unstable CI (<50% boot.)"))
+    ax.legend(handles=handles, fontsize=7, loc="lower left")
     fig.tight_layout()
     fig.savefig(path, dpi=140)
     plt.close(fig)
@@ -339,6 +421,7 @@ def plot_grid_stability(grid, summary, path, title):
 # --------------------------------------------------------------------------- #
 def main() -> int:
     cfg = load_config()
+    paper_style()   # house style: thin grid, thick data — applies to all figures below
     ev = load_event_windows()
     ref_date = ev.loc[ev.stage == "soil_limit", "start"].iloc[0]
     acute_start = ev.loc[ev.stage == "acute", "start"].iloc[0]
@@ -365,9 +448,14 @@ def main() -> int:
     for rule in ["first-departure", "acute-event"]:
         res = run_rule(df, streams, rule, ref_date, model="l2", pen_scale=2.0,
                        n_boot=n_boot, block=5, seed=SEED)
-        res.to_csv(tdir / f"onset_{fname[rule]}.csv", index=False)
+        summary = res.drop(columns="draw_dates")
+        summary.to_csv(tdir / f"onset_{fname[rule]}.csv", index=False)
+        draws_long(res, ref_date).to_csv(
+            tdir / f"onset_bootstrap_draws_{fname[rule]}.csv", index=False)
         plot_caterpillar(res, fdir / f"onset_caterpillar_{fname[rule]}.png",
                          ref_date, marks, rule_titles[rule])
+        plot_swarm(res, fdir / f"onset_swarm_{fname[rule]}.png",
+                   ref_date, marks, rule_titles[rule])
 
         grid = grid_search(df, streams, rule, ref_date)
         summ = stability_summary(grid)
