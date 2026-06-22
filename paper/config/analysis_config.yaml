@@ -1,0 +1,168 @@
+# =============================================================================
+# DE-Har multi-sensor stress paper — CANONICAL ANALYSIS CONTRACT
+# -----------------------------------------------------------------------------
+# Headline figures/tables ALWAYS read this file. Alternatives run only in
+# paper/90_sensitivity/ and may never silently change a headline number.
+# Boundaries anchored to Haberstroh et al. 2025 (Ecohydrology e2761) and
+# verified against data/processed/dehar_daily_2025.parquet.
+# =============================================================================
+
+meta:
+  year: 2025
+  daily_parquet: data/processed/dehar_daily_2025.parquet
+  streams_parquet: data/processed/dehar_all_streams_2025.parquet
+  sensors_meta: paper/config/sensors_meta.csv
+  python: /home/lk1167/miniconda3/envs/dehar-spac/bin/python   # `conda run` is broken (libmamba)
+
+# --- Event definition (forcing-based, two-stage, August-centric) -------------
+event:
+  baseline:
+    month: 6                    # June only — clean (sm 15-30%, swp_pd ~0). NOT mid-July (already <13%).
+  soil_limit_threshold_pct: 13.0   # Haberstroh: water-limitation regime / Js co-limitation
+  soil_limit_rolling_days: 14      # onset = first day the rolling-mean soil moisture stays < threshold
+  swp_stress_threshold_MPa: -1.0   # acute-stress marker (annotation only; event window is forcing-based)
+  swp_recovery_threshold_MPa: -0.3 # recovery = sustained return above this
+  acute_search_months: [8]         # acute peak located within August
+  # Verified facts the define_event step must reproduce:
+  #   first sustained sm<13% ~ early July; swp_pd min = -2.04 MPa on 2025-08-20; recovery early Sept.
+
+# --- Per-stream canonical aggregation ----------------------------------------
+streams:
+  soil_moisture:
+    canonical_col: sm_mean_pct          # 3 profiles x top-3 depths (5/10/20 cm)
+    uncertainty_col: sm_std_pct
+  swp_predawn:
+    canonical_col: swp_pd_mean_MPa      # mean of matched trees; predawn = 2 h pre-sunrise
+    uncertainty_col: swp_pd_ci95_MPa
+    matched_trees: [h10545, h10546, h10560]
+  vpd:
+    canonical_col: vpd_max_hPa          # daily max (heat/atmospheric-demand marker)
+    mean_col: vpd_mean_hPa
+  vod:
+    # Yao, Humphrey & Konings 2024 (GRL, GNSS-VOD in a broadleaf forest): daily-MAXIMUM VOD
+    # (which lands in the pre-dawn) is what correlates with predawn leaf water potential.
+    # So canonical = daily max, NOT a fixed nighttime mean. Dew/leaf-surface-water inflates
+    # pre-dawn VOD (their 2nd PC) -> keep RH<=95% + no-rain-12h QC (already in pipeline).
+    canonical_window: daily_max
+    canonical_col: vod_daily_max         # TODO: add to daily aggregation from 30-min stream
+    interim_proxy_col: vod_predawn_mean  # use until daily_max column is built (max ~ predawn)
+    uncertainty_col: vod_predawn_std
+    receivers: [gps1, gps3, gps5]        # ensemble canonical; per-receiver = sensitivity
+    elevation_cutoff_deg: 30             # MIN_THETA_DEFAULT in src/proximal_rs/gnss_vod.py
+  pai:
+    series: [hinge, hemi_hi]            # TWO series, NEVER averaged (hinge=early-warning, hemi=bulk)
+    quality_filter: quality_all
+    aggregation: daily_mean_24h
+  leaf_angle:
+    canonical_window: daylight          # per-frame PMF mean, daylight
+    all_hornbeam_cams: [60, 61, 62, 63, 64, 65, 66, 67, 70]
+    birdcherry_cams: [68, 69]           # tree 11033 (Prunus padus); separate series, species-dependent
+    coherence_min_r: 0.6                # inter-cam coherence QC over the season; drops poor-viewpoint cams.
+    # QC drops 63/64/70 -> canonical hornbeam ensemble = [60,61,62,65,66,67] (= the *** event responders);
+    # threshold robust in the natural gap 0.58|0.69. All cams shown in the Stage-10 appendix (sampling design).
+  greenness:
+    # Canonical canopy greenness = network PhenoCam GCC (gold-standard, citable),
+    # superseding the in-house anglecam GCC (ADR 0002). Resolved by
+    # paper_common.greenness_col(cfg): phenocam -> gcc_phenocam_{agg}_p90 ;
+    # anglecam -> gcc_anglecam_p90 (the legacy/compensatory product, kept for contrast).
+    gcc_source: phenocam                # phenocam | anglecam
+    phenocam_aggregation: 1day          # 1day | 3day  — SHARED knob (GCC + NDVI below)
+    # Sonnentag et al. 2012 (Agric. For. Meteorol. 152:159-177), verbatim: "green chromatic
+    #   coordinate (gcc = G/[R + G + B])" and "we propose a moving window approach that assigns
+    #   the 90th percentile of all daytime values within a three-day window to the center day
+    #   (per90)" -> motivates gcc_90 to suppress illumination/weather artifacts.
+    # Richardson et al. 2018 (Sci. Data 5:180028), verbatim: "Processing for both 1- and 3-day
+    #   summary product files is identical, except that for the 1-day file, data are reported at a
+    #   one-day time step ... For the 3-day file, data are reported at a three-day time step,
+    #   corresponding [to] the middle day of the 3-day interval, but statistics are calculated
+    #   using the valid images across the entire 3-day interval."
+    canonical_stat: p90                 # gcc_90 (NOT smooth_gcc_90: smoothing biases changepoint timing)
+    uncertainty_col_stat: std
+  ndvi_phenocam:
+    # Camera NDVI from the PhenoCam paired RGB+IR images — a PROXIMAL NDVI, always labelled
+    # `phenocam` to distinguish it from the satellite s2_ndvi. Made available for future
+    # computations; not consumed by a headline stage yet. Follows phenocam_aggregation above.
+    canonical_col: ndvi_phenocam_1day_p90    # ndvi_90 (90th pct, shadow-robust like gcc_90)
+    uncertainty_col: ndvi_phenocam_1day_std
+  sapflow:
+    aggregation: daily_sum              # nighttime zero-flow baseline already applied upstream
+  twd:
+    aggregation: daily
+  satellite:
+    s2_clear_sky_dates: S2_MANUAL_DATES_2025   # ~33 manual clear-sky dates (GEE per-pass)
+    s2_source: gee_per_pass                     # COPERNICUS/S2_SR_HARMONIZED (unchanged)
+    s1_source: sentle_weekly                    # CANONICAL S1 = sentle weekly composites (ADR 0001):
+    #   /mnt/data/lk1167/projects/other/data/icos-har/processed/sentinel/sentinel_har_2025.zarr
+    #   All passes composited per ISO week -> regular weekly cadence, less speckle (was GEE per-pass).
+    #   NOTE: angle-normalisation DROPPED (zarr has no incidence-angle band) -> a ~static dB offset,
+    #   immaterial to the z-score / event-change analysis (CR & RVI ratios cancel it). asc+desc kept
+    #   separate. Provenance now split: S1=sentle, S2=GEE. See docs/adr/0001-sentinel1-sentle-weekly.md.
+    s1_orbits: [ascending, descending]
+    s1_vars: [VV_dB, VH_dB, RVI]
+    roi_radius_m: 100.0                 # canonical (smooths geolocation jitter, ~10-30 px)
+    # GNSS-T VOD footprint (Humphrey & Frankenberg 2023): r = h / tan(elev_cutoff).
+    # With 30 deg cutoff and ~18 m canopy top -> r ~ 31 m. The footprint-matched ROI used in
+    # the sensitivity check is ~30 m. [CONFIRM effective canopy height h for the footprint.]
+    vod_footprint_radius_m: 30.0
+
+# --- Onset / cascade (Part A) ------------------------------------------------
+onset:
+  search_window: [2025-06-01, 2025-09-30]   # spans baseline->recovery so a sensor CAN lead the soil
+  reference_event: first_soil_limit_day     # onset reported as days relative to this
+  method: changepoint_bootstrap             # principled changepoint location + bootstrap CI
+  n_boot: 1000
+  pai_as_two_rows: true                     # hinge & hemi plotted separately in the caterpillar
+
+# --- Application C: VOD biomass correction -----------------------------------
+appC:
+  window: [2025-05-01, 2025-11-30]        # leaf-on incl. autumn senescence (identifies biomass slope)
+  event_exclude: [2025-08-07, 2025-08-22] # exclude the acute event from the biomass fit (no water bias)
+  vod_source: daily_max                   # built from 30-min nvod ensemble + QC (Yao 2024)
+  vod_fallback_col: vod_nighttime_mean    # well-covered QC'd column if daily_max unavailable
+  biomass_col: pai_hemi_hi_hinge_mean_m2m2     # canonical biomass term = hemi (slow/bulk)
+  corrections:                            # compared head-to-head
+    hemi_pai: pai_hemi_hi_hinge_mean_m2m2 # canonical
+    hinge_pai: pai_hinge_hinge_mean_m2m2  # contrast (fast; responds at event)
+    loess_halfwidth_days: 30              # PAI-free detrend; accessible w/o scanner.
+    # Humphrey & Frankenberg 2023, verbatim: "a local regression filter (LOESS) with ±30 d width"
+    # for the biomass v_veg low-pass. We replicate it as a day-bandwidth tricube local-linear LOESS
+    # (a simplified single-series analog of their full v_veg/m_g retrieval). Width robustness in
+    # paper/90_sensitivity/appC_sensitivity.py.
+  validation:
+    primary: swp_pd_mean_MPa
+    corroborate: [twd_pd_mean_um, sapflow_sum_mean]
+    exploratory: leaf_angle_hornbeam_daylight_mean
+  regime_threshold_MPa: -0.5              # VOD<->Psi tightens below this (prototype)
+  qc: {rh_max_pct: 95.0, rain_lookback_h: 12, rain_thresh_mm: 0.001}
+
+# --- Application B: satellite stress attribution -----------------------------
+appB:
+  window: [2025-05-01, 2025-10-30]        # leaf-on season
+  # event-change delta (PRIMARY, model-free): pre-crash shoulder -> acute peak (PAI still flat).
+  # PRIMARY figure now reports the change as a DISTRIBUTION over many defensible baselines
+  # (baseline_ensemble below) so the headline z is not a single cherry-picked window.
+  peak: [2025-08-06, 2025-08-20]          # acute crash (S2: 08-18; swp min 08-20) — FIXED (in-situ peak)
+  peak_satellite: [2025-08-01, 2025-08-31] # SATELLITE-ONLY event window: only 3 S2 scenes fall in the acute
+                                          #   Aug6-20 window; the full month adds Aug 26/31 -> captures the
+                                          #   post-rain divergence (greenness NDVI/CIg recover; water NDII/NMDI
+                                          #   + senescence PSRI keep declining = onset senescence). In-situ
+                                          #   stay on the acute peak (where PAI is flattest = cleanest control).
+  baseline_ensemble:                      # primary figure: slide baselines, report median + 95% band
+    envelope: [2025-06-01, 2025-08-05]    # clean-June -> early-July soil-limited runway (brackets the choice)
+    widths: [21, 28, 35, 42]                  # floor 14 d; ensemble = every start-position x each width
+    min_insitu_days: 7                    # per (placement x var) guard: in-situ needs >=7 daily values
+    min_s2_scenes: 2                      # S2 needs >=2 scenes in window (S2 baseline pinned to Jun9-Jul2 cluster
+                                          #   by the 5-week July cloud gap; a data fact, not a choice)
+  baseline: [2025-06-15, 2025-08-01]      # hand-set reference ONLY (drawn as a dot to show it falls in the band);
+                                          #   does NOT drive the primary bars anymore.
+  event_exclude: [2025-08-06, 2025-08-22] # RESERVED for the deferred support pass (decouple the poly-detrend
+                                          #   exclusion from `baseline`). NOT read yet — support unchanged this pass.
+  poly_order: 3                           # smooth seasonal detrend (event-preserving) for the anomaly attribution
+  event_retention_min: 0.8                # detrend must keep >=80% of the raw event change
+
+# --- Sensitivity axes (annex only) -------------------------------------------
+sensitivity:
+  roi_radius_m: [30, 50, 100]            # 30 ~ GNSS-T VOD footprint-matched; 100 = canonical
+  vod_window: [daily_max, predawn, nighttime, daylight, 24h]   # daily_max = canonical
+  swp_tree_set: [matched3, all_available]
+  baseline_window: [june, june_first_half, may_june]

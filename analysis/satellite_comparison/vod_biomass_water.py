@@ -52,7 +52,7 @@ EVENT = ("2025-08-07", "2025-08-20")          # the hot-dry event
 BASELINE_WINDOW = 45                          # days, for the PAI-free cross-check
 PSI_THRESH = -0.5                             # stem Psi (MPa): VOD<->Psi tightens below this
 
-VOD, PAI, PSI, SM = "vod_mean", "pai_total_sg", "swp_mpa_predawn_mean", "sm_pct_mean"
+VOD, PAI, PSI, SM = "vod_mean_sg", "pai_total_sg", "swp_mpa_predawn_mean", "sm_pct_mean"
 
 
 def load(csv: Path, start: str, end: str) -> pd.DataFrame:
