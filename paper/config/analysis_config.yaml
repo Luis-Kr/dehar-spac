@@ -67,9 +67,15 @@ streams:
     # anglecam -> gcc_anglecam_p90 (the legacy/compensatory product, kept for contrast).
     gcc_source: phenocam                # phenocam | anglecam
     phenocam_aggregation: 1day          # 1day | 3day  — SHARED knob (GCC + NDVI below)
-    # Sonnentag et al. 2012 (Agric. For. Meteorol. 152:159): GCC = G/(R+G+B); the per-period
-    #   90th percentile (gcc_90) is used to suppress illumination/weather artifacts. [VERBATIM TODO]
-    # Richardson et al. 2018 (Sci. Data 5:180028): standard PhenoCam 1-day/3-day summary products. [VERBATIM TODO]
+    # Sonnentag et al. 2012 (Agric. For. Meteorol. 152:159-177), verbatim: "green chromatic
+    #   coordinate (gcc = G/[R + G + B])" and "we propose a moving window approach that assigns
+    #   the 90th percentile of all daytime values within a three-day window to the center day
+    #   (per90)" -> motivates gcc_90 to suppress illumination/weather artifacts.
+    # Richardson et al. 2018 (Sci. Data 5:180028), verbatim: "Processing for both 1- and 3-day
+    #   summary product files is identical, except that for the 1-day file, data are reported at a
+    #   one-day time step ... For the 3-day file, data are reported at a three-day time step,
+    #   corresponding [to] the middle day of the 3-day interval, but statistics are calculated
+    #   using the valid images across the entire 3-day interval."
     canonical_stat: p90                 # gcc_90 (NOT smooth_gcc_90: smoothing biases changepoint timing)
     uncertainty_col_stat: std
   ndvi_phenocam:
