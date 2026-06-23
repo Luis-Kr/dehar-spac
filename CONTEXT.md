@@ -48,3 +48,33 @@ The single breakpoint elected to represent a stream's response — either the ea
 (first-departure, the headline cascade) or the largest (acute-event). The headline unit; a
 breakpoint collapsed to one date.
 _Avoid_: breakpoint, changepoint
+
+### Proximal PAI (LEAF / TLS)
+
+The word "hinge" rides on **two independent axes** — a *scan mode* and an *inversion metric*.
+Keep them separate; the headline column name `pai_hinge_hinge_mean_m2m2` collides them, and a
+swap would invert the early-warning story.
+
+**Hinge scan**:
+A LEAF acquisition *mode* that stares at the fixed 57.5° zenith ring and sweeps all azimuths,
+sampling that ring **densely**. The dedicated single-angle scan.
+_Avoid_: hinge (unqualified — could mean the metric), hinge angle
+
+**Hemi scan**:
+A LEAF acquisition *mode* that images the whole sky dome (fisheye). Two resolutions:
+`hemi_hi` (dense) and `hemi_low` (sparse). At the 57.5° ring it samples **far fewer** beams
+than the hinge scan.
+_Avoid_: hemispherical (unqualified), hemi (unqualified)
+
+**Hinge-angle PAI**:
+The *inversion metric* `-1.1 · log(Pgap)` evaluated at the single 57.5° ring (Jupp et al.
+2009). Applied to **both** the hinge scan and the hemi scan's 57.5° ring — it is a method, not
+a scan. Contrast metrics: **Linear PAI** (multi-angle regression over all zeniths) and
+**Weighted PAI** (solid-angle weighted).
+_Avoid_: hinge PAI (ambiguous with the scan), HingePAI as a synonym for the hinge scan
+
+**Early-warning vs bulk contrast**:
+The headline Part A contrast is **hinge-scan PAI vs hemi-scan PAI under the *same*
+hinge-angle inversion** — i.e. a *sampling-density* (and minor effective-angle/geometry)
+contrast at one fixed angle, **not** a hinge-method-vs-hemi-method contrast.
+_Avoid_: "hinge vs hemi" (implies different methods; they share the inversion)
