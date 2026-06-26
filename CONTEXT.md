@@ -56,9 +56,13 @@ Keep them separate; the headline column name `pai_hinge_hinge_mean_m2m2` collide
 swap would invert the early-warning story.
 
 **Hinge scan**:
-A LEAF acquisition *mode* that stares at the fixed 57.5° zenith ring and sweeps all azimuths,
-sampling that ring **densely**. The dedicated single-angle scan.
-_Avoid_: hinge (unqualified — could mean the metric), hinge angle
+A LEAF acquisition *mode* that stares at a fixed encoder setpoint (nominally the 57.5° zenith
+ring) and sweeps all azimuths, sampling that ring **densely**. The dedicated single-angle scan.
+Because it shares the scan head's drifting "up" (see **Hinge "up"-drift**) its *true* zenith
+walks off 57.5° after early May and cannot be recovered (single parked angle), so it is **kept
+only as a comparison/sensitivity series**, not the canonical 57.5° source.
+_Avoid_: hinge (unqualified — could mean the metric), hinge angle, treating the dedicated hinge
+scan as a fixed 57.5° measurement after early May
 
 **Hemi scan**:
 A LEAF acquisition *mode* that images the whole sky dome (fisheye). Two resolutions:
@@ -68,13 +72,39 @@ _Avoid_: hemispherical (unqualified), hemi (unqualified)
 
 **Hinge-angle PAI**:
 The *inversion metric* `-1.1 · log(Pgap)` evaluated at the single 57.5° ring (Jupp et al.
-2009). Applied to **both** the hinge scan and the hemi scan's 57.5° ring — it is a method, not
-a scan. Contrast metrics: **Linear PAI** (multi-angle regression over all zeniths) and
-**Weighted PAI** (solid-angle weighted).
-_Avoid_: hinge PAI (ambiguous with the scan), HingePAI as a synonym for the hinge scan
+2009). A method, not a scan. The **canonical** 57.5° measurement is taken from the
+**up-corrected `hemi_hi` scan's 57.5° ring** (which samples a true, season-stable 57.5° once
+the "up"-drift is corrected); the dedicated **hinge scan**'s same-named inversion is retained
+only for comparison. Contrast metrics: **Linear PAI** (multi-angle regression over all zeniths)
+and **Weighted PAI** (solid-angle weighted). On the hemi the Hinge-angle and Weighted inversions give
+the **same canopy total** (Weighted rescales to `max(HingePAI)`); they differ only in PAVD shape, so
+**Linear PAI is the only inversion with a distinct total**.
+_Avoid_: hinge PAI (ambiguous with the scan), HingePAI as a synonym for the hinge scan,
+sourcing the canonical 57.5° metric from the dedicated hinge scan, treating hemi Weighted and
+Hinge-angle totals as different series
 
-**Early-warning vs bulk contrast**:
-The headline Part A contrast is **hinge-scan PAI vs hemi-scan PAI under the *same*
-hinge-angle inversion** — i.e. a *sampling-density* (and minor effective-angle/geometry)
-contrast at one fixed angle, **not** a hinge-method-vs-hemi-method contrast.
-_Avoid_: "hinge vs hemi" (implies different methods; they share the inversion)
+**Canonical proximal PAI (bulk)**:
+Part A consumes a **single** proximal PAI series — the canopy total of the **up-corrected
+`hemi_hi`** scan (`pai_hemi_hi_hinge`, which **equals** `pai_hemi_hi_weighted` by construction: on
+the hemi the Hinge-angle and Weighted inversions give the *same total*, differing only in PAVD
+shape). The earlier **early-warning vs bulk PAI split is retired**: its early-warning arm was the
+dedicated hinge scan's dense 57.5° sampling, now shown to be a drifting-angle artifact (see **Hinge
+"up"-drift**). The dedicated hinge scan (`pai_hinge_hinge`) is retained only as a flagged comparison
+and a possible future early-warning arm; the cascade's fast signal is carried by the water sensors
+(predawn SWP, VOD), not a second PAI.
+_Avoid_: any "hinge-vs-hemi" or "hinge-vs-weighted" early-warning-vs-bulk **PAI** contrast (the hemi
+Hinge and Weighted totals are identical; the dedicated hinge scan is compromised)
+
+**Hemi "up"-point drift**:
+The hemi reconstruction recovers each beam's zenith by folding the mirror sweep about its "straight
+up" point. At DE-Har that point **drifts over the season** as the scanner settles in the sandy soil
+(about 0° offset in April, growing to about +24° by December). Left uncorrected it mis-registers the
+two half-sweeps, pushes returns below the ground (concentric rings near the scanner), and biases the
+leaf-off **autumn/winter PAI low**. Corrected by re-folding each scan about a **smoothed seasonal
+daily-"up" lookup** (per-scan seam fits across all hemi scans, robust LOWESS over the season — robust
+to single-scan seam failures, which the earlier per-scan self-calibration was not). The **same drift
+shifts the dedicated hinge scan** off 57.5° (it shares the scan head's encoder home), but the hinge
+scan cannot be re-folded back (single parked angle) — hence the canonical 57.5° comes from the
+corrected hemi.
+_Avoid_: trusting raw hemi 3-D geometry off the 57.5° ring for scans after early May; trusting the
+per-scan self-calibration for any single scan.

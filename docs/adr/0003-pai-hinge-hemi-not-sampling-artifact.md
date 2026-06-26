@@ -1,7 +1,16 @@
 # 0003 — PAI hinge vs hemi: same inversion, different angle and footprint (not a sampling-count artifact)
 
-- Status: accepted
+- Status: accepted; finding #4 superseded by [0004](0004-leaf-tilt-rotation-correction.md) (2026-06-25);
+  the "dedicated hinge scan = dense 57.5° early-warning / keep both never-averaged series" framing
+  superseded by [0005](0005-leaf-updrift-seasonal-correction.md) (2026-06-26)
 - Date: 2026-06-23
+
+> **Superseded in part.** Finding #4 below measured the hinge scan at "~59 deg" using the upstream
+> *offset* tilt transform. ADR 0004 shows that ~59 deg was largely an artifact of that crude offset
+> (it adds the full ~2 deg tilt to every beam); a proper per-beam rotation puts the hinge scan back
+> at ~57.5 deg. The shot-count and azimuth findings (#2, #3) and the footprint component still hold.
+> The committed PAI parquets were regenerated with the rotation; the numbers quoted here reflect the
+> pre-fix offset data, retained at `data/processed/proximal_rs/leaf_pre_tilt_fix_20260625/`.
 
 ## Context
 
