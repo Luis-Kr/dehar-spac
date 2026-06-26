@@ -332,6 +332,20 @@ def build_pai(df: pd.DataFrame) -> pd.DataFrame:
             sd = _daily(s, "std").rename(f"pai_{scan}_{short}_std_m2m2")
             fr = pd.concat([m, sd], axis=1)
             out = fr if out is None else out.join(fr, how="outer")
+
+    # uncorrected (rotation, no up-drift) headline comparison columns (ADR 0005):
+    # pai_hemi_hi_{hinge,weighted}_uncorr_{mean,std}
+    uqcol = "leaf_hemi_hi_uncorr_quality_all"
+    if uqcol in df.columns:
+        ugood = df[uqcol] == True                                 # noqa: E712
+        for raw, short in {"HingePAI": "hinge", "WeightedPAI": "weighted"}.items():
+            src = f"leaf_hemi_hi_uncorr_{raw}_total"
+            if src not in df.columns:
+                continue
+            s = df[src].where(ugood)
+            m = _daily(s, "mean").rename(f"pai_hemi_hi_{short}_uncorr_mean_m2m2")
+            sd = _daily(s, "std").rename(f"pai_hemi_hi_{short}_uncorr_std_m2m2")
+            out = out.join(pd.concat([m, sd], axis=1), how="outer")
     return out
 
 
