@@ -1,0 +1,103 @@
+# ==========================================================================
+# LEAF scan processing contract — DE-Har 2025
+# ==========================================================================
+# Drives scripts/process_leaf.py (raw LEAF CSV scans -> processed parquet).
+# EVERY parameter the pipeline uses lives here; nothing is hardcoded in the
+# script. This is the data-processing config (raw -> processed) and is kept
+# separate from the paper analysis contract (paper/config/analysis_config.yaml,
+# which governs headline figures only).
+#
+# Refactored from notebooks/00_exploration/leaf_batch_processing_dehar.ipynb.
+# Faithful: with the values below the script reproduces the committed
+# leaf_<type>_2025.parquet files bit-for-bit.
+
+# --- Paths (always relative to the repo root) ------------------------------
+paths:
+  raw_dir: data/raw/proximal_rs/leaf
+  met_file: data/processed/atmosphere_soil/meteo_dehar_30min.csv
+  precip_file: data/processed/atmosphere_soil/HARTHM_2025_Precipitation_30min_UTC.csv
+  out_dir: data/processed/proximal_rs/leaf
+  out_pattern: "leaf_{scan_type}_{year}.parquet"   # one file per scan type
+  year: 2025
+
+# --- Scan types ------------------------------------------------------------
+# glob       : filename pattern under raw_dir.
+# duration_min: nominal scan length (min); sets the met-averaging window.
+scan_types:
+  hemi_hi:
+    glob: "ESS?????_*_hemi_*_0800_0400.csv"
+    duration_min: 45
+  hemi_low:
+    glob: "ESS?????_*_hemi_*_0200_0100.csv"
+    duration_min: 8
+  hinge:
+    glob: "ESS?????_*_hinge_*.csv"
+    duration_min: 6
+
+# --- Instrument geometry ---------------------------------------------------
+instrument:
+  sensor_height_m: 1.5       # LEAF height above ground
+  zenith_offset_deg: 0       # added to the scan-encoder zenith (deg)
+  max_range_m: 120           # returns beyond this are set to NaN
+
+# --- Geometry correction: two orthogonal knobs (issue #10 / #11, ADR 0004 / 0005)
+# tilt    : how the ~2 deg instrument lean (Tilt header) is removed.
+#   offset   - upstream pylidar scalar offset (leaf_io.py:131-135): adds the tilt's
+#              zenith/azimuth to EVERY beam. Geometrically crude (biases the hinge
+#              ring to ~59 deg); the no-up_drift offset is byte-identical to the
+#              pre-fix parquet (data/processed/proximal_rs/leaf_pre_tilt_fix_20260625/).
+#   rotation - proper per-beam re-levelling (ADR 0004): minimal 3-D rotation,
+#              ~tilt*cos(az - tilt_az), mean-zero over an azimuth sweep. Canonical.
+#   none     - raw instrument frame.
+# up_drift : re-fold each HEMI scan about the smoothed seasonal "up"
+#            (up_lookup_csv) to fix the scanner-settling drift (ADR 0005). The
+#            HINGE scan is never re-folded (single ring). When true, up_lookup_csv
+#            must exist (build it first: scripts/build_leaf_up_lookup.py).
+# Canonical headline = rotation + up_drift (composed: re-fold then tilt). Variants:
+#   tilt: offset, up_drift: true  -> the published-tilt + up-drift sensitivity
+#   tilt: rotation, up_drift: false -> the pre-up-drift uncorrected baseline.
+transform:
+  tilt: rotation
+  up_drift: true
+  up_lookup_csv: data/processed/proximal_rs/leaf/leaf_up_daily_2025.csv
+
+# --- Jupp (2009) vertical plant-profile inversion --------------------------
+# Jupp et al. (2009), https://doi.org/10.1093/treephys/tpn022
+profile:
+  height_resolution_m: 0.5   # vertical bin size
+  max_height_m: 25           # top of profile (50 bins at 0.5 m)
+  min_zenith_deg: 5          # exclude near-vertical (incomplete sampling)
+  max_zenith_deg: 70         # exclude near-horizon (long, occluded paths)
+  zenith_resolution_deg: 5
+  azimuth_resolution_deg: 45
+  method: FIRSTLAST          # target weighting: WEIGHTED | FIRST | ALL | FIRSTLAST
+
+# --- Meteorological quality filter -> quality_good -------------------------
+# A scan is flagged when wet optics, fog, or wind could disturb the canopy.
+quality_met:
+  precip_window_h: 3         # look-back window for rain before the scan
+  precip_thresh_mm: 0.1      # >= this total rain -> flag_rain
+  rh_thresh_pct: 95          # mean RH >= this -> flag_humid (fog / wet leaves)
+  ustar_thresh_ms: 0.7       # max u* >= this -> flag_wind (canopy motion)
+
+# --- Temporal-outlier filter -> flag_temporal_outlier, quality_all ---------
+# Per scan hour, build a daily season series of total canopy PAI, robustly
+# smooth it (Garcia 2010 DCT smoother, pylidar rsmooth), and flag scans that
+# deviate from the seasonal trend. Segmented so leaf-out / leaf-fall are not
+# over-smoothed. Re-runnable as a second pass over the saved parquet.
+quality_temporal:
+  pai_metric:                # total-PAI series used per scan type
+    hemi_hi: WeightedPAI
+    hemi_low: WeightedPAI
+    hinge: HingePAI
+  breakpoints: [0, 50, 150, null]  # phenology segment edges (day indices);
+                                    # trailing null -> n days for that hour
+  penalty: [1, null, 1]            # rsmooth log10 penalty per segment (null = GCV)
+  max_k: [6, 6, 6]                 # robust-reweighting iterations per segment
+  resid_thresh: -1.0               # flag days dropping > |this| m2/m2 below smooth
+
+# --- Parallelism / runtime -------------------------------------------------
+runtime:
+  workers: null          # null -> max(1, cpu_count - reserve_cpus)
+  reserve_cpus: 4        # leave this many cores free when workers is null
+  progress_every: 100    # log a progress line every N scans

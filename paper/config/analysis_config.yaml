@@ -50,7 +50,11 @@ streams:
     receivers: [gps1, gps3, gps5]        # ensemble canonical; per-receiver = sensitivity
     elevation_cutoff_deg: 30             # MIN_THETA_DEFAULT in src/proximal_rs/gnss_vod.py
   pai:
-    series: [hinge, hemi_hi]            # TWO series, NEVER averaged (hinge=early-warning, hemi=bulk)
+    # Single canonical proximal "bulk biomass" PAI = up-corrected hemi_hi (ADR 0005).
+    # pai_hemi_hi_hinge_mean_m2m2 (== weighted total). The dedicated hinge scan and the
+    # no-up-drift hemi are flagged comparisons, not headline series.
+    canonical: hemi_hi
+    comparison: [hinge, hemi_hi_uncorr]
     quality_filter: quality_all
     aggregation: daily_mean_24h
   leaf_angle:
@@ -132,10 +136,12 @@ appC:
   event_exclude: [2025-08-07, 2025-08-22] # exclude the acute event from the biomass fit (no water bias)
   vod_source: daily_max                   # built from 30-min nvod ensemble + QC (Yao 2024)
   vod_fallback_col: vod_nighttime_mean    # well-covered QC'd column if daily_max unavailable
-  biomass_col: pai_hemi_hi_hinge_mean_m2m2     # canonical biomass term = hemi (slow/bulk)
+  biomass_col: pai_hemi_hi_weighted_mean_m2m2  # canonical structural term = up-corrected hemi WeightedPAI (ADR 0005)
   corrections:                            # compared head-to-head
-    hemi_pai: pai_hemi_hi_hinge_mean_m2m2 # canonical
-    hinge_pai: pai_hinge_hinge_mean_m2m2  # contrast (fast; responds at event)
+    regressors:                           # label -> PAI structural regressor column
+      hemi-PAI:               pai_hemi_hi_weighted_mean_m2m2         # canonical = corrected hemi WeightedPAI (headline)
+      hemi-PAI (uncorrected): pai_hemi_hi_weighted_uncorr_mean_m2m2  # up-drift OFF — improve/worsen check
+      hinge-PAI:              pai_hinge_hinge_mean_m2m2              # dedicated hinge scan (drifting angle; flagged)
     loess_halfwidth_days: 30              # PAI-free detrend; accessible w/o scanner.
     # Humphrey & Frankenberg 2023, verbatim: "a local regression filter (LOESS) with ±30 d width"
     # for the biomass v_veg low-pass. We replicate it as a day-bandwidth tricube local-linear LOESS
