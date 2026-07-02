@@ -18,6 +18,7 @@ Run with the project Python (see repo `CLAUDE.md`):
 |---|---|---|
 | `fig_hemi_corrected_vs_uncorrected.py` | wide, transposed: 4 scenes as columns × 2 rows {uncorrected, corrected `seasonal_up`}, colour = height (0–20 m) | `outputs/hemi_uncorrected_vs_corrected.png` |
 | `fig_hemi_seasonal_series.py` | wide: monthly night scenes as columns (Apr–Jun, Aug–Oct) × 3 rows {height, gap fraction binned (az/zen, log), gap fraction boolean}, `seasonal_up` | `outputs/hemi_seasonal_series.png` |
+| `fig_height_resolved_dynamics.py` | height×time heatmaps of PAVD and gap fraction (Pgap 57.5°) + per-layer PAI — the two-layer DE-Har canopy: **deciduous understory** (~4–6 m; the whole seasonal + Aug-drought signal) vs **evergreen overstory** (~12 m; flat, slight autumn rise = reduced occlusion from below, not growth). Reads the canonical manual-up profiles (ADR 0006). | `outputs/height_resolved_dynamics.png` |
 
 Prerequisite (seasonal "up")
 - Both figures default to the `seasonal_up` mode, which re-folds each scan about
