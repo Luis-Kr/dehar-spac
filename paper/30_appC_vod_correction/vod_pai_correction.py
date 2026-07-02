@@ -2,9 +2,9 @@
 Stage 30 / Application C — recover the water signal in GNSS-T VOD via PAI correction.
 
 Claim: raw GNSS-T VOD is biomass-dominated and ~uncorrelated with water status over the season;
-subtracting the independently measured (lidar) hemi-PAI biomass term yields a water-VOD that
+subtracting the independently measured (lidar) understory-PAI biomass term yields a water-VOD that
 tracks predawn stem Psi. Within the August event biomass is static, so PAI-correction preserves
-the event water dip. We compare hemi-PAI (canonical) vs a PAI-free LOESS detrend (±30 d, Humphrey &
+the event water dip. We compare understory-PAI (canonical) vs a PAI-free LOESS detrend (±30 d, Humphrey &
 Frankenberg 2023) on (a) how the VOD<->water correlation is window-dependent — it lives in the stress
 window and dilutes as the flat post-event autumn is appended (window_resolved.png) — (b) preservation
 of the August water dip, and (c) whether concurrent high-res PAI beats a cheap detrend. The retired
@@ -13,7 +13,7 @@ trend-matching, and it is not static in August so it corrupts the dip retention)
 
 Note on the biomass fit: it is **event-blind** (ADR 0007) — the fit sees ALL days, including the
 drought. Excluding the event would unfairly beat the event-blind LOESS detrend and would need the
-drought known a priori (breaking the standalone-proxy claim). It is nearly free for hemi-PAI (biomass
+drought known a priori (breaking the standalone-proxy claim). It is nearly free for understory-PAI (biomass
 is ~static in August, so those days barely move the slope), and PAI still preserves the dip that LOESS
 smears — because PAI removes biomass with *independent structure*, blind to VOD's own time series,
 whereas the temporal filter follows VOD's August dip down. The old exclude-Aug fit is a sensitivity
@@ -210,7 +210,7 @@ def regime(df, vod, corr, psi, thr):
 
 
 def per_receiver_appendix(cfg, df, season, event, psi):
-    """Appendix: hemi-PAI correction + SWP validation for each receiver separately vs the ensemble
+    """Appendix: understory-PAI correction + SWP validation for each receiver separately vs the ensemble
     (the three receivers sample partly different canopy)."""
     recs = {"ensemble": ("gps1", "gps3", "gps5"), "gps1": ("gps1",),
             "gps3": ("gps3",), "gps5": ("gps5",)}
@@ -219,7 +219,7 @@ def per_receiver_appendix(cfg, df, season, event, psi):
         v = build_vod_daily_max(cfg, receivers=rcv, name=f"vod_{label}")
         dw = df.join(v).loc[season[0]:season[1]]
         corr, _ = corrections(dw, f"vod_{label}", cfg)
-        work = dw.assign(water=corr["hemi-PAI"])
+        work = dw.assign(water=corr["understory-PAI"])
 
         def rr(col, w):
             d = work.loc[w[0]:w[1]][[col, psi]].dropna()
@@ -242,7 +242,7 @@ def fig_per_receiver(tbl, path):
     fig, ax = plt.subplots(figsize=(9, 4.8))
     sns.barplot(data=m, x="receiver", y="r", hue="metric", ax=ax)
     ax.axhline(0, color="0.5", lw=0.8)
-    ax.set(title="Appendix — VOD↔SWP per GNSS-T receiver (hemi-PAI corrected)", ylabel="Pearson r", xlabel="")
+    ax.set(title="Appendix — VOD↔SWP per GNSS-T receiver (understory-PAI corrected)", ylabel="Pearson r", xlabel="")
     ax.legend(fontsize=8, title="")
     fig.tight_layout(); fig.savefig(path, dpi=150); plt.close(fig)
 
@@ -256,18 +256,18 @@ def _smooth7(s):
 
 
 def fig_decomposition(df, vod, fits, corr, psi, event, path):
-    a, b = fits["hemi-PAI"]["a"], fits["hemi-PAI"]["b"]
-    pcol = fits["hemi-PAI"]["pai"]
+    a, b = fits["understory-PAI"]["a"], fits["understory-PAI"]["b"]
+    pcol = fits["understory-PAI"]["pai"]
     fig, ax = plt.subplots(3, 1, figsize=(11, 8.5), sharex=True)
     # raw daily-max VOD is spiky/gappy — show it faint, read the 7 d smooth
     ax[0].plot(df.index, df[vod], color="#2166ac", lw=0, marker=".", ms=3, alpha=0.30)
     ax[0].plot(df.index, _smooth7(df[vod]), color="#2166ac", lw=2.0,
                label="VOD (daily max, 7 d smooth)")
     ax[0].plot(df.index, _smooth7(a + b * df[pcol]), "--", color="#8c510a", lw=1.8,
-               label=f"biomass fit a+b·hemiPAI (b={b:.3f}, R²={fits['hemi-PAI']['r2']:.2f})")
+               label=f"biomass fit a+b·understoryPAI (b={b:.3f}, R²={fits['understory-PAI']['r2']:.2f})")
     ax[0].set_ylabel("VOD"); ax[0].legend(loc="upper right")
     ax[1].axhline(0, color="0.6", lw=0.6)
-    for k, c in [("hemi-PAI", "#2166ac"), ("LOESS detrend", "#b2182b")]:
+    for k, c in [("understory-PAI", "#2166ac"), ("LOESS detrend", "#b2182b")]:
         ax[1].plot(df.index, corr[k], color=c, lw=0.6, alpha=0.25)         # faint raw residual
         ax[1].plot(df.index, _smooth7(corr[k]), color=c, lw=1.8, alpha=0.95,
                    label=f"water-VOD ({k}, 7 d smooth)")
@@ -285,7 +285,7 @@ def fig_decomposition(df, vod, fits, corr, psi, event, path):
 
 def fig_validation_scatter(df, vod, corr, psi, season, event, path):
     work = df.assign(**{f"water::{k}": v for k, v in corr.items()})
-    panels = [("raw VOD", vod), ("water-VOD (hemi-PAI)", "water::hemi-PAI"),
+    panels = [("raw VOD", vod), ("water-VOD (understory-PAI)", "water::understory-PAI"),
               ("water-VOD (LOESS ±30 d)", "water::LOESS detrend")]
     fig, axes = plt.subplots(1, 3, figsize=(14, 4.6))
     for ax, (lab, col) in zip(axes, panels):
@@ -316,7 +316,7 @@ def fig_correction_comparison(val, evp, path):
     ax[0].set(title="(a) Seasonal VOD↔predawn SWP correlation", ylabel="Pearson r", xlabel="")
     ax[0].tick_params(axis="x", rotation=20)
     ax[0].margins(y=0.18)
-    evp_static = evp[evp.signal.isin(["raw VOD", "hemi-PAI", "LOESS detrend"])]
+    evp_static = evp[evp.signal.isin(["raw VOD", "understory-PAI", "LOESS detrend"])]
     sns.barplot(data=evp_static, x="signal", y="retention", ax=ax[1], color="#41ab5d")
     ax[1].axhline(1.0, color="0.5", ls="--", lw=1)
     ax[1].set(title="(b) August water-dip retention (1 = preserved; static-biomass corrections)",
@@ -328,8 +328,8 @@ def fig_correction_comparison(val, evp, path):
 
 
 def fig_corroboration(df, vod, corr, cfg, season, event, path):
-    """Appendix: hemi-PAI water-VOD vs the corroborating physiology (TWD, sap flow, leaf angle)."""
-    work = df.assign(water=corr["hemi-PAI"])
+    """Appendix: understory-PAI water-VOD vs the corroborating physiology (TWD, sap flow, leaf angle)."""
+    work = df.assign(water=corr["understory-PAI"])
     ac = cfg["appC"]
     targets = [("Tree water deficit (µm)", ac["validation"]["corroborate"][0]),
                ("Sap flux density", ac["validation"]["corroborate"][1]),
@@ -343,7 +343,7 @@ def fig_corroboration(df, vod, corr, cfg, season, event, path):
             r, p = stats.pearsonr(d["water"], d[col])
             ax.scatter(d[col], z(d["water"]), s=26, color=c, alpha=0.75,
                        edgecolor="none", label=f"{wlab} (r={r:.2f}{stars(p)}, n={len(d)})")
-        ax.set(xlabel=lab, ylabel="z(water-VOD, hemi-PAI)")
+        ax.set(xlabel=lab, ylabel="z(water-VOD, understory-PAI)")
         ax.legend(loc="best", frameon=True)
     fig.suptitle("Appendix — biomass-corrected water-VOD vs corroborating physiology")
     fig.tight_layout(rect=(0, 0, 1, 0.94))
@@ -351,10 +351,10 @@ def fig_corroboration(df, vod, corr, cfg, season, event, path):
 
 
 def fig_threshold(df, vod, corr, psi, thr, path):
-    work = df.assign(water=corr["hemi-PAI"])
+    work = df.assign(water=corr["understory-PAI"])
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.8))
     for ax, (col, lab, color) in zip(axes, [(vod, "raw VOD", "#8c510a"),
-                                            ("water", "water-VOD (hemi-PAI)", "#2166ac")]):
+                                            ("water", "water-VOD (understory-PAI)", "#2166ac")]):
         d = work[[col, psi]].dropna()
         wet, dry = d[d[psi] >= thr], d[d[psi] < thr]
         ax.scatter(wet[psi], wet[col], s=20, color="0.6", alpha=0.5, label=f"Ψ≥{thr} (n={len(wet)})")
@@ -399,13 +399,13 @@ def window_resolved(df, pairs, start, ends, min_n=8):
 
 def fig_window_resolved(wr, event, path):
     # pair label = "<TARGET>: <method>"; one panel per target, colour/style by method
-    style = {"raw VOD": ("0.55", "--", 1.6), "hemi-PAI": ("#2166ac", "-", 2.6),
+    style = {"raw VOD": ("0.55", "--", 1.6), "understory-PAI": ("#2166ac", "-", 2.6),
              "LOESS": ("#b2182b", "-", 2.0)}
     panels = [("SWP", "vs predawn SWP"), ("TWD", "vs tree water deficit (TWD)")]
     fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharex=True)
     for ax, (tkey, ttitle) in zip(axes, panels):
         sub = wr[wr["pair"].str.startswith(tkey + ":")]
-        for method in ("raw VOD", "hemi-PAI", "LOESS"):
+        for method in ("raw VOD", "understory-PAI", "LOESS"):
             g = sub[sub["pair"] == f"{tkey}: {method}"].sort_values("end")
             col, ls, lw = style[method]
             ax.plot(g["end"], g["r"], marker="o", ms=4, ls=ls, lw=lw, color=col,
@@ -417,7 +417,7 @@ def fig_window_resolved(wr, event, path):
         ax.legend(loc="best", fontsize=9)
     axes[0].set_ylabel("Pearson r  (cumulative from May 1)")
     fig.suptitle("App C — the VOD↔water correlation lives in the stress window\n"
-                 "raw VOD decouples in autumn; hemi-PAI and LOESS both stay coupled "
+                 "raw VOD decouples in autumn; understory-PAI and LOESS both stay coupled "
                  "(they separate on the event-dip, not here)")
     fig.tight_layout(rect=(0, 0, 1, 0.92))
     fig.savefig(path, dpi=150); plt.close(fig)
@@ -454,17 +454,17 @@ def main() -> int:
                                         ("Leaf angle", ac["validation"]["exploratory"])]
     val = validate(dfw, vod, corr, targets, season, event)
     evp = event_preservation(dfw, vod, corr, base, event)
-    mom = momen(dfw, vod, fits["hemi-PAI"]["pai"], psi)
+    mom = momen(dfw, vod, fits["understory-PAI"]["pai"], psi)
     reg = regime(dfw, vod, corr, psi, ac["regime_threshold_MPa"])
 
     # window-resolved correlation (SWP flat after the event -> full-season r is diluted)
     twd = ac["validation"]["corroborate"][0]
-    dfwr = dfw.assign(water_hemi=corr["hemi-PAI"], water_loess=corr["LOESS detrend"])
+    dfwr = dfw.assign(water_hemi=corr["understory-PAI"], water_loess=corr["LOESS detrend"])
     wr_pairs = [("SWP: raw VOD", vod, psi),
-                ("SWP: hemi-PAI", "water_hemi", psi),
+                ("SWP: understory-PAI", "water_hemi", psi),
                 ("SWP: LOESS", "water_loess", psi),
                 ("TWD: raw VOD", vod, twd),
-                ("TWD: hemi-PAI", "water_hemi", twd),
+                ("TWD: understory-PAI", "water_hemi", twd),
                 ("TWD: LOESS", "water_loess", twd)]
     wr_ends = pd.date_range(season[0] + pd.Timedelta("75D"), season[1], freq="7D")
     wr = window_resolved(dfwr, wr_pairs, season[0], wr_ends)
@@ -496,16 +496,16 @@ def main() -> int:
     print("=== Validation vs predawn SWP (full season) ===")
     print(val[(val.window == "full season") & (val.target == "Predawn SWP")]
           .to_string(index=False, na_rep="—"))
-    print("\n=== Validation: water-VOD (hemi-PAI) across targets ===")
-    print(val[val.signal == "hemi-PAI"].to_string(index=False, na_rep="—"))
+    print("\n=== Validation: water-VOD (understory-PAI) across targets ===")
+    print(val[val.signal == "understory-PAI"].to_string(index=False, na_rep="—"))
     print("\n=== Event water-dip retention ===")
     print(evp.to_string(index=False))
     print("\n=== Momen nested model ===")
     print(mom.to_string(index=False))
-    print("\n=== Per-receiver (appendix) — hemi-PAI corrected VOD vs SWP ===")
+    print("\n=== Per-receiver (appendix) — understory-PAI corrected VOD vs SWP ===")
     print(prx.to_string(index=False, na_rep="—"))
 
-    print("\n=== Window-resolved r (hemi-PAI): signal lives in the stress window ===")
+    print("\n=== Window-resolved r (understory-PAI): signal lives in the stress window ===")
     piv = wr.pivot(index="end", columns="pair", values="r")
     print(piv.iloc[[0, len(piv) // 2, -1]].round(2).to_string())
     sap = ac["validation"]["corroborate"][1]

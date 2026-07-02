@@ -1,9 +1,12 @@
 # 0005 — LEAF "up"-drift seasonal correction: canonical 57.5° from the corrected hemi
 
-- Status: accepted; decision #1 (the **smoothed daily lookup** as the canonical "up") superseded by
-  [0006](0006-leaf-updrift-manual-up-canonical.md) (2026-07-01) — the hand-verified **manual up
-  reference** is now canonical and the smoothed lookup is a reproducible fallback. Everything else
-  (the up-drift re-fold ∘ tilt composition, hinge-never-refolded, the 57.5° source) stands.
+- Status: accepted; two decisions later superseded (2026-07-01):
+  decision #1 (the **smoothed daily lookup** as the canonical "up") by
+  [0006](0006-leaf-updrift-manual-up-canonical.md) — the hand-verified **manual up reference** is now
+  canonical, smoothed lookup a fallback; and decision #6 (App C structural regressor = **whole-dome**
+  weighted PAI) by [0008](0008-appc-understory-pai-regressor.md) — App C now uses the **understory**
+  band (1.5–9 m). Everything else (the up-drift re-fold ∘ tilt composition, hinge-never-refolded, the
+  57.5° source) stands.
 - Date: 2026-06-26
 - Extends: [0004](0004-leaf-tilt-rotation-correction.md) — the up-drift re-fold is composed **on top of**
   the rotation tilt; the published offset is re-kept as a sensitivity.

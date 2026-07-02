@@ -48,6 +48,10 @@ log = logging.getLogger("export_all_streams")
 
 # ── Config ──────────────────────────────────────────────────────────────────
 TARGET_YEAR = 2025
+# Canopy-layer split for the hemi profile (PAVD gap at 8-10 m): understory 1.5-9 m
+# (deciduous, the varying/well-sampled layer), overstory 9-18 m (evergreen,
+# occlusion-limited). App C uses the understory band as its structural regressor (ADR 0008).
+LEAF_LAYER_EDGES = (1.5, 9.0, 18.0)
 TOWER_X, TOWER_Y = SITE_UTM_X, SITE_UTM_Y          # EPSG:32632 (UTM 32N)
 ROI_RADIUS_M = 100.0
 
@@ -139,7 +143,10 @@ def leaf_totals(path: Path, prefix: str) -> pd.DataFrame:
     """Per-scan canopy totals (max over height of the cumulative PAI) + quality flag.
 
     These are canopy-integrated totals, not means. Full height profiles stay in
-    the leaf parquet files.
+    the leaf parquet files. For hemi scans, also the WeightedPAI of the two canopy
+    layers (understory / overstory, split at ``LEAF_LAYER_EDGES``) as the
+    cumulative-PAI difference across each band's edges — App C uses the understory
+    band as its structural regressor (ADR 0008).
     """
     df = pd.read_parquet(path)
     df["datetime"] = pd.to_datetime(df["datetime"], utc=True)
@@ -153,6 +160,14 @@ def leaf_totals(path: Path, prefix: str) -> pd.DataFrame:
             f"{prefix}quality_all": g["quality_all"].first(),
         }
     )
+    if "hemi" in prefix:
+        lo, mid, hi = LEAF_LAYER_EDGES
+        piv = df.pivot_table(index="datetime", columns="height",
+                             values="WeightedPAI", aggfunc="first")
+        H = np.array(sorted(piv.columns))
+        near = lambda h: H[np.abs(H - h).argmin()]              # noqa: E731
+        out[f"{prefix}WeightedPAI_understory"] = piv[near(mid)] - piv[near(lo)]
+        out[f"{prefix}WeightedPAI_overstory"] = piv[near(hi)] - piv[near(mid)]
     return _to_year_utc(out)
 
 

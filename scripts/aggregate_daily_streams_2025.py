@@ -333,6 +333,21 @@ def build_pai(df: pd.DataFrame) -> pd.DataFrame:
             fr = pd.concat([m, sd], axis=1)
             out = fr if out is None else out.join(fr, how="outer")
 
+    # canopy-layer PAI (understory 1.5-9 m / overstory 9-18 m) from the hemi profile;
+    # App C's canonical structural regressor is the understory band (ADR 0008):
+    # pai_hemi_hi_weighted_{understory,overstory}_{mean,std}_m2m2
+    hqcol = "leaf_hemi_hi_quality_all"
+    if hqcol in df.columns:
+        hgood = df[hqcol] == True                                 # noqa: E712
+        for band in ("understory", "overstory"):
+            src = f"leaf_hemi_hi_WeightedPAI_{band}"
+            if src not in df.columns:
+                continue
+            s = df[src].where(hgood)
+            m = _daily(s, "mean").rename(f"pai_hemi_hi_weighted_{band}_mean_m2m2")
+            sd = _daily(s, "std").rename(f"pai_hemi_hi_weighted_{band}_std_m2m2")
+            out = out.join(pd.concat([m, sd], axis=1), how="outer")
+
     # uncorrected (rotation, no up-drift) headline comparison columns (ADR 0005):
     # pai_hemi_hi_{hinge,weighted}_uncorr_{mean,std}
     uqcol = "leaf_hemi_hi_uncorr_quality_all"

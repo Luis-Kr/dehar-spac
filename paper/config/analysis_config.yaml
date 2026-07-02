@@ -143,11 +143,14 @@ appC:
                                           # sensitivity (paper/90_sensitivity/appC_sensitivity.py)
   vod_source: daily_max                   # built from 30-min nvod ensemble + QC (Yao 2024)
   vod_fallback_col: vod_nighttime_mean    # well-covered QC'd column if daily_max unavailable
-  biomass_col: pai_hemi_hi_weighted_mean_m2m2  # canonical structural term = up-corrected hemi WeightedPAI (ADR 0005)
+  biomass_col: pai_hemi_hi_weighted_understory_mean_m2m2  # canonical structural term = understory (1.5-9 m) WeightedPAI (ADR 0008)
   corrections:                            # compared head-to-head
     regressors:                           # label -> PAI structural regressor column
-      hemi-PAI:               pai_hemi_hi_weighted_mean_m2m2         # canonical = corrected hemi WeightedPAI (headline)
-      hemi-PAI (uncorrected): pai_hemi_hi_weighted_uncorr_mean_m2m2  # up-drift OFF — pre-correction baseline
+      understory-PAI:          pai_hemi_hi_weighted_understory_mean_m2m2  # CANONICAL (ADR 0008): the
+                                          # deciduous, well-sampled, water-relevant layer (1.5-9 m). The
+                                          # occlusion-limited overstory contaminates the whole-dome total.
+      total-PAI:               pai_hemi_hi_weighted_mean_m2m2             # whole-dome comparison (ADR 0005)
+      total-PAI (uncorrected): pai_hemi_hi_weighted_uncorr_mean_m2m2      # up-drift OFF baseline
       # hinge-PAI (pai_hinge_hinge_mean_m2m2) is DROPPED from the headline: the dedicated hinge scan is
       # the retired drifting-angle artifact (ADR 0005). Its seasonal-r "win" is angle-drift trend-matching
       # (not biomass) and it inflates the Aug dip retention >1 (it is not static in August). Keep only as a
