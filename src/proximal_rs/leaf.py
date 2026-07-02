@@ -172,6 +172,56 @@ def up_on_date(lookup: pd.Series, when: _dt.datetime) -> float:
     return float(lookup.iloc[pos])
 
 
+def load_up_lookup_perscan(path: str | Path) -> pd.Series:
+    """Per-scan "up" (deg) indexed by UTC scan datetime (manual reference).
+
+    Companion to :func:`load_up_lookup` (one smoothed value per day). Reads a
+    lookup with one row per hand-inspected scan (columns ``datetime`` and
+    ``up_deg``) and returns a UTC datetime-indexed, time-sorted series so that
+    :func:`up_on_scan` can interpolate the "up" for scans nobody inspected.
+    Duplicate timestamps keep the last (latest submit wins).
+
+    Parameters
+    ----------
+    path : str or pathlib.Path
+        CSV with ``datetime`` and ``up_deg`` columns.
+
+    Returns
+    -------
+    pandas.Series
+        ``up_deg`` indexed by tz-aware UTC datetime, ascending, unique.
+    """
+    df = pd.read_csv(path, parse_dates=["datetime"])
+    df["datetime"] = pd.to_datetime(df["datetime"], utc=True)
+    s = df.set_index("datetime")["up_deg"].astype(float).sort_index()
+    return s[~s.index.duplicated(keep="last")]
+
+
+def up_on_scan(lookup: pd.Series, when: _dt.datetime) -> float:
+    """Manual "up" (deg) for a scan datetime, linearly interpolated in time.
+
+    Returns the exact manual value when ``when`` coincides with an inspected
+    scan, otherwise a linear interpolation between the two nearest-in-time
+    manual points. Held constant (no extrapolation) outside the inspected
+    range, so head/tail scans take the first/last inspected "up".
+
+    Parameters
+    ----------
+    lookup : pandas.Series
+        Per-scan "up" from :func:`load_up_lookup_perscan` (sorted UTC index).
+    when : datetime.datetime
+        Scan datetime (naive treated as UTC).
+
+    Returns
+    -------
+    float
+        Interpolated "up" in degrees.
+    """
+    ts = pd.Timestamp(when)
+    ts = ts.tz_localize("UTC") if ts.tzinfo is None else ts.tz_convert("UTC")
+    return float(np.interp(ts.value, lookup.index.asi8, lookup.to_numpy(float)))
+
+
 def leveling_rotation(tilt_vec) -> np.ndarray:
     """Minimal rotation matrix that re-levels the instrument frame (issue #10).
 

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LEAF up-vector inspector</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+  <script src="/static/plotly.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="dot"></span>
+      <h1>LEAF up&#8209;vector inspector</h1>
+      <span class="sub">hemispherical re&#8209;fold check &middot; DE&#8209;Har 2025</span>
+    </div>
+    <div class="progress">
+      <span id="prog-count" class="prog-count">&mdash;</span>
+      <div class="prog-track"><div id="prog-bar" class="prog-fill"></div></div>
+      <span id="prog-saved" class="prog-saved">0 saved</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="panel">
+      <section class="card">
+        <div class="card-head">
+          <span class="label">Day</span>
+          <span id="day-pos" class="muted">&ndash; / &ndash;</span>
+        </div>
+        <div id="mode-seg" class="segmented" style="margin-bottom: 12px;">
+          <button class="seg active" data-mode="new">New scenes</button>
+          <button class="seg" data-mode="redo">Redo done</button>
+        </div>
+        <div class="daynav">
+          <button id="prev-day" class="btn ghost" title="Previous day ([)">&#9664;</button>
+          <div class="day-label">
+            <span id="day-date" class="day-date">&mdash;</span>
+            <span id="day-tags" class="tags"></span>
+          </div>
+          <button id="next-day" class="btn ghost" title="Next day (])">&#9654;</button>
+        </div>
+        <label class="field">
+          <span class="field-label">Scan this day</span>
+          <select id="scan-select"></select>
+        </label>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <span class="label">Up&nbsp;vector</span>
+          <span id="up-delta" class="pill">&Delta; 0.0&deg;</span>
+        </div>
+        <div class="up-readout">
+          <span id="up-value">&mdash;</span><span class="unit">&deg;</span>
+        </div>
+        <input id="up-slider" class="slider" type="range" min="165" max="215" step="0.1" />
+        <div class="nudge">
+          <button class="btn tiny" data-step="-1">&minus;1</button>
+          <button class="btn tiny" data-step="-0.1">&minus;0.1</button>
+          <input id="up-input" class="numin" type="number" step="0.1" />
+          <button class="btn tiny" data-step="0.1">+0.1</button>
+          <button class="btn tiny" data-step="1">+1</button>
+        </div>
+        <div class="defrow">
+          <span class="muted">default (<span id="def-src">manual</span>): <b id="up-default">&mdash;</b>&deg;</span>
+          <button id="reset-up" class="btn link">reset</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><span class="label">Representation</span>
+          <span class="muted">grid sharpens the seam</span></div>
+        <div id="view-seg" class="segmented">
+          <button class="seg active" data-view="points">Points</button>
+          <button class="seg" data-view="grid">Gridded</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><span class="label">Colour scale</span>
+          <span class="muted">height percentiles</span></div>
+        <div class="pcts">
+          <label class="field inline"><span>low&nbsp;%</span>
+            <input id="p-lo" class="numin" type="number" min="0" max="100" step="1" value="2" /></label>
+          <label class="field inline"><span>high&nbsp;%</span>
+            <input id="p-hi" class="numin" type="number" min="0" max="100" step="1" value="98" /></label>
+          <button id="rescale" class="btn ghost" title="Recompute colour limits at the current up">rescale</button>
+        </div>
+        <div id="crange" class="muted crange">&mdash;</div>
+        <label class="checkrow"><input id="show-down" type="checkbox" />
+          <span>show below&#8209;horizon (downward) beams</span></label>
+      </section>
+
+      <section class="actions">
+        <button id="submit" class="btn primary">Submit &amp; next</button>
+        <button id="skip" class="btn ghost">Skip day</button>
+      </section>
+      <p class="hint">arrows nudge up &middot; <b>Enter</b> submit &middot; <b>S</b> skip &middot; <b>[</b> <b>]</b> day</p>
+    </aside>
+
+    <section class="plotwrap">
+      <div id="plot"></div>
+      <div id="loading" class="loading hidden"><div class="spin"></div><span>loading scan&hellip;</span></div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

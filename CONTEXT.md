@@ -100,11 +100,26 @@ The hemi reconstruction recovers each beam's zenith by folding the mirror sweep 
 up" point. At DE-Har that point **drifts over the season** as the scanner settles in the sandy soil
 (about 0° offset in April, growing to about +24° by December). Left uncorrected it mis-registers the
 two half-sweeps, pushes returns below the ground (concentric rings near the scanner), and biases the
-leaf-off **autumn/winter PAI low**. Corrected by re-folding each scan about a **smoothed seasonal
-daily-"up" lookup** (per-scan seam fits across all hemi scans, robust LOWESS over the season — robust
-to single-scan seam failures, which the earlier per-scan self-calibration was not). The **same drift
-shifts the dedicated hinge scan** off 57.5° (it shares the scan head's encoder home), but the hinge
-scan cannot be re-folded back (single parked angle) — hence the canonical 57.5° comes from the
-corrected hemi.
-_Avoid_: trusting raw hemi 3-D geometry off the 57.5° ring for scans after early May; trusting the
-per-scan self-calibration for any single scan.
+leaf-off **autumn/winter PAI low**. Corrected by re-folding each scan about an **"up" reference**
+(see *Up reference* below). The **same drift shifts the dedicated hinge scan** off 57.5° (it shares
+the scan head's encoder home), but the hinge scan cannot be re-folded back (single parked angle) —
+hence the canonical 57.5° comes from the corrected hemi.
+_Avoid_: trusting raw hemi 3-D geometry off the 57.5° ring for scans after early May.
+
+**Up reference**:
+The per-beam "straight up" a hemi scan is re-folded about to undo the *Hemi "up"-point drift*. Two
+distinct sources, kept separate because they can disagree by several degrees in the leaf-off season:
+
+- **Manual up reference** — the hand-verified estimate and the **canonical "up" (ADR 0006)**: a human
+  aligns the folded-fisheye seam per scan in the up-inspector app and records the "up" that makes the
+  canopy coherent (`up_manual`, 300+ scans). Resolved per scan and interpolated in time for scans no
+  one inspected (`up_resolve: scan`), so it keeps abrupt re-settling steps the smoothing loses.
+  Independent DHP LAI confirms it is at least as good as the smoothed proxy and best-matches the
+  leaf-off level.
+- **Smoothed up lookup** — the automatic estimate: per-scan seam fits across all hemi scans, robust
+  per-day median, LOWESS-smoothed over the season. Robust to single-scan seam failures; the ADR 0005
+  method, now a **reproducible fallback** (`up_resolve: date`). Can lag real re-settling steps because
+  the smoothing blurs them.
+
+_Avoid_: "the up curve" (unqualified — say *smoothed up lookup* or *manual up reference*); calling the
+manual curve "self-calibration" (that was the rejected fragile per-scan seam-fit, not the hand check).

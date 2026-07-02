@@ -37,6 +37,32 @@ def test_get_scan_datetime_none_on_garbage():
     assert leaf.get_scan_datetime("not_a_scan.csv") is None
 
 
+# ── up_on_scan (per-scan manual "up", time-interpolated) ─────────────────────
+def _perscan_lookup() -> pd.Series:
+    idx = pd.to_datetime(
+        ["2025-04-16 23:00", "2025-04-17 23:00", "2025-04-19 23:00"], utc=True
+    )
+    return pd.Series([180.0, 182.0, 186.0], index=idx)
+
+
+def test_up_on_scan_exact_match_returns_manual_value():
+    s = _perscan_lookup()
+    assert leaf.up_on_scan(s, dt.datetime(2025, 4, 17, 23, 0)) == pytest.approx(182.0)
+
+
+def test_up_on_scan_interpolates_between_neighbours():
+    s = _perscan_lookup()
+    # midway in time between 182 @ 04-17 23:00 and 186 @ 04-19 23:00 -> 184
+    got = leaf.up_on_scan(s, dt.datetime(2025, 4, 18, 23, 0))
+    assert got == pytest.approx(184.0)
+
+
+def test_up_on_scan_clamps_outside_range():
+    s = _perscan_lookup()
+    assert leaf.up_on_scan(s, dt.datetime(2025, 4, 1, 0, 0)) == pytest.approx(180.0)
+    assert leaf.up_on_scan(s, dt.datetime(2025, 5, 1, 0, 0)) == pytest.approx(186.0)
+
+
 # ── transform_mode (the "transform command") ────────────────────────────────
 def test_transform_mode_offset():
     assert (
