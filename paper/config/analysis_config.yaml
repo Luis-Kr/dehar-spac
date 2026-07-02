@@ -133,15 +133,25 @@ onset:
 # --- Application C: VOD biomass correction -----------------------------------
 appC:
   window: [2025-05-01, 2025-11-30]        # leaf-on incl. autumn senescence (identifies biomass slope)
-  event_exclude: [2025-08-07, 2025-08-22] # exclude the acute event from the biomass fit (no water bias)
+  event_exclude: [2025-08-07, 2025-08-22] # the acute drought window (forcing-defined). Used for the
+                                          # event dip-retention + figure shading, and by the exclude-Aug
+                                          # fit sensitivity (name kept for continuity, see fit_exclude_event)
+  fit_exclude_event: false                # CANONICAL = event-blind biomass fit (ADR 0007): the fit sees
+                                          # ALL days. Excluding the drought would unfairly beat the
+                                          # event-blind LOESS detrend AND need the event known a priori
+                                          # (breaks the standalone-proxy claim). true = exclude-Aug
+                                          # sensitivity (paper/90_sensitivity/appC_sensitivity.py)
   vod_source: daily_max                   # built from 30-min nvod ensemble + QC (Yao 2024)
   vod_fallback_col: vod_nighttime_mean    # well-covered QC'd column if daily_max unavailable
   biomass_col: pai_hemi_hi_weighted_mean_m2m2  # canonical structural term = up-corrected hemi WeightedPAI (ADR 0005)
   corrections:                            # compared head-to-head
     regressors:                           # label -> PAI structural regressor column
       hemi-PAI:               pai_hemi_hi_weighted_mean_m2m2         # canonical = corrected hemi WeightedPAI (headline)
-      hemi-PAI (uncorrected): pai_hemi_hi_weighted_uncorr_mean_m2m2  # up-drift OFF — improve/worsen check
-      hinge-PAI:              pai_hinge_hinge_mean_m2m2              # dedicated hinge scan (drifting angle; flagged)
+      hemi-PAI (uncorrected): pai_hemi_hi_weighted_uncorr_mean_m2m2  # up-drift OFF — pre-correction baseline
+      # hinge-PAI (pai_hinge_hinge_mean_m2m2) is DROPPED from the headline: the dedicated hinge scan is
+      # the retired drifting-angle artifact (ADR 0005). Its seasonal-r "win" is angle-drift trend-matching
+      # (not biomass) and it inflates the Aug dip retention >1 (it is not static in August). Keep only as a
+      # sensitivity regressor (paper/90_sensitivity/appC_sensitivity.py).
     loess_halfwidth_days: 30              # PAI-free detrend; accessible w/o scanner.
     # Humphrey & Frankenberg 2023, verbatim: "a local regression filter (LOESS) with ±30 d width"
     # for the biomass v_veg low-pass. We replicate it as a day-bandwidth tricube local-linear LOESS
@@ -150,6 +160,9 @@ appC:
   validation:
     primary: swp_pd_mean_MPa
     corroborate: [twd_pd_mean_um, sapflow_sum_mean]
+    # NOTE: sapflow is STRUCTURE-contaminated — raw (uncorrected) VOD already correlates ~0.80 with it
+    # via the shared seasonal decline, so it does NOT discriminate the water correction. TWD (like SWP:
+    # raw VOD ~uncorrelated, then the correction recovers it) is the second water target; sapflow = context.
     exploratory: leaf_angle_hornbeam_daylight_mean
   regime_threshold_MPa: -0.5              # VOD<->Psi tightens below this (prototype)
   qc: {rh_max_pct: 95.0, rain_lookback_h: 12, rain_thresh_mm: 0.001}
