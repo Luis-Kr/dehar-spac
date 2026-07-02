@@ -1,5 +1,12 @@
 # LEAF "up"-drift correction — change notes (2026-06-26, issue #11)
 
+> **Update 2026-07-01 (ADR 0006):** the canonical "up" is now the hand-verified
+> **manual up reference** (`up_resolve: scan`), not the smoothed daily lookup this
+> note describes — the smoothed lookup is a reproducible fallback. The re-fold
+> mechanism below is unchanged; only the "up" source changed. To update the
+> canonical after inspecting more scans, see
+> [docs/runbooks/update-canonical-leaf-up.md](runbooks/update-canonical-leaf-up.md).
+
 Practical companion to **ADR 0005** (the decision record). What changed, where the
 differences are, and how to reproduce. Read ADR 0005 for *why*.
 

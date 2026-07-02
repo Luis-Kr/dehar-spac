@@ -49,17 +49,26 @@ instrument:
 #   rotation - proper per-beam re-levelling (ADR 0004): minimal 3-D rotation,
 #              ~tilt*cos(az - tilt_az), mean-zero over an azimuth sweep. Canonical.
 #   none     - raw instrument frame.
-# up_drift : re-fold each HEMI scan about the smoothed seasonal "up"
-#            (up_lookup_csv) to fix the scanner-settling drift (ADR 0005). The
-#            HINGE scan is never re-folded (single ring). When true, up_lookup_csv
-#            must exist (build it first: scripts/build_leaf_up_lookup.py).
-# Canonical headline = rotation + up_drift (composed: re-fold then tilt). Variants:
-#   tilt: offset, up_drift: true  -> the published-tilt + up-drift sensitivity
+# up_drift : re-fold each HEMI scan about a corrected "up" to fix the
+#            scanner-settling drift (issue #11). The HINGE scan is never
+#            re-folded (single ring). When true, up_lookup_csv must exist.
+# up_resolve : how the "up" is resolved per scan.
+#   scan - per-scan MANUAL up reference, interpolated in time (ADR 0006,
+#          CANONICAL): lookup = leaf_up_manual_perscan_2025.csv, built from the
+#          hand-verified up-inspector CSV by
+#          scripts/build_leaf_up_manual_lookup.py. Preserves re-settling steps.
+#   date - automatic smoothed daily lookup, nearest day (ADR 0005, now the
+#          fallback): lookup = leaf_up_daily_2025.csv, built by
+#          scripts/build_leaf_up_lookup.py.
+# Canonical headline = rotation + up_drift + up_resolve:scan (manual). Variants:
+#   up_resolve: date                -> the ADR 0005 smoothed-lookup fallback
+#   tilt: offset, up_drift: true    -> the published-tilt + up-drift sensitivity
 #   tilt: rotation, up_drift: false -> the pre-up-drift uncorrected baseline.
 transform:
   tilt: rotation
   up_drift: true
-  up_lookup_csv: data/processed/proximal_rs/leaf/leaf_up_daily_2025.csv
+  up_resolve: scan
+  up_lookup_csv: data/processed/proximal_rs/leaf/leaf_up_manual_perscan_2025.csv
 
 # --- Jupp (2009) vertical plant-profile inversion --------------------------
 # Jupp et al. (2009), https://doi.org/10.1093/treephys/tpn022

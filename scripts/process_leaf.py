@@ -52,9 +52,11 @@ from dehar.proximal_rs.leaf import (  # noqa: E402
     get_scan_datetime,
     load_met,
     load_up_lookup,
+    load_up_lookup_perscan,
     process_single_scan,
     resolve_transform,
     up_on_date,
+    up_on_scan,
 )
 
 DEFAULT_CONFIG = REPO_ROOT / "config" / "leaf_processing.yaml"
@@ -122,23 +124,49 @@ def run_process(
 
     met_full = load_met(REPO_ROOT / paths["met_file"], REPO_ROOT / paths["precip_file"])
 
-    # seasonal "up" lookup (only when the up-drift re-fold is on; ADR 0005)
+    # "up" lookup (only when the up-drift re-fold is on; ADR 0005). Two modes:
+    #   up_resolve=date (default)  smoothed daily lookup, nearest-day per scan
+    #   up_resolve=scan            per-scan lookup, interpolated in time (ADR 0006)
     up_lookup = None
+    up_resolve = "date"
     if resolve_transform(cfg["transform"])["up_drift"]:
         lookup_path = REPO_ROOT / cfg["transform"]["up_lookup_csv"]
+        up_resolve = cfg["transform"].get("up_resolve", "date")
         if not lookup_path.exists():
+            builder = (
+                "scripts/build_leaf_up_manual_lookup.py"
+                if up_resolve == "scan"
+                else "scripts/build_leaf_up_lookup.py"
+            )
             raise FileNotFoundError(
                 f"transform.up_drift is on but the 'up' lookup is missing: "
-                f"{lookup_path}. Build it first: python scripts/build_leaf_up_lookup.py"
+                f"{lookup_path}. Build it first: python {builder}"
             )
-        up_lookup = load_up_lookup(lookup_path)
-        log.info("%s: up-drift on, using %s", scan_type, lookup_path.name)
+        if up_resolve not in ("date", "scan"):
+            raise ValueError(
+                f"transform.up_resolve must be 'date' or 'scan', got {up_resolve!r}"
+            )
+        up_lookup = (
+            load_up_lookup_perscan(lookup_path)
+            if up_resolve == "scan"
+            else load_up_lookup(lookup_path)
+        )
+        log.info(
+            "%s: up-drift on (resolve=%s), using %s",
+            scan_type,
+            up_resolve,
+            lookup_path.name,
+        )
 
     def _up_for(f: Path) -> float | None:
         if up_lookup is None:
             return None
         dt = get_scan_datetime(f.name)
-        return up_on_date(up_lookup, dt) if dt is not None else None
+        if dt is None:
+            return None
+        return up_on_scan(up_lookup, dt) if up_resolve == "scan" else up_on_date(
+            up_lookup, dt
+        )
 
     profiles: list[pd.DataFrame] = []
     n_ok = n_fail = 0

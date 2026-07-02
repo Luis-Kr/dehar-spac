@@ -1,0 +1,6 @@
+# other/ = off-pipeline exploration. Keep the CODE + the manual-up basis CSV;
+# never commit generated artifacts.
+#   *.png and generated *.csv are already covered by the repo-root .gitignore.
+#   parquet data and the vendored Plotly lib are not, so ignore them here.
+*.parquet
+up_inspector/static/plotly.min.js
