@@ -75,16 +75,14 @@ PHENOCAM_PATH = ROOT / "data/processed/proximal_rs/phenocam/phenocam_daily.parqu
 SAPFLOW_MIN_COUNT = 40        # min 30-min steps required for a daily sap-flow sum
 GPP_INTERP_LIMIT_D = 5
 
-# Sentinel-2 manually-curated clear-sky dates (from poster_input.ipynb)
-S2_MANUAL_DATES_2025 = pd.to_datetime([
-    "2025-01-13", "2025-02-27", "2025-03-04", "2025-03-09", "2025-03-19",
-    "2025-04-03", "2025-04-08", "2025-04-10", "2025-04-28", "2025-04-30",
-    "2025-05-10", "2025-05-20", "2025-05-30", "2025-06-09", "2025-06-12",
-    "2025-06-17", "2025-06-19", "2025-06-22", "2025-06-29", "2025-07-02",
-    "2025-08-08", "2025-08-11", "2025-08-18", "2025-08-26", "2025-08-31",
-    "2025-09-20", "2025-10-07", "2025-10-15", "2025-10-30", "2025-11-04",
-    "2025-11-06", "2025-11-19", "2025-12-09",
-]).date
+# Sentinel-2 canonical clear-sky source (ADR 0012): the hand-audited per-scene
+# ROI product. Headline stages take verdict == "clear" at the 100 m ring; the
+# retired S2_MANUAL_DATES_2025 date list is gone.
+S2_ROI_PARQUET = (
+    ROOT / "data/processed/satellite/sentinel2/s2_roi_means_by_scene.parquet"
+)
+S2_RING_M = 100          # canonical science ring (analysis_config.yaml)
+S2_HEADLINE_YEAR = 2025  # ADR 0012: canonical daily S2 stays 2025-only this pass
 
 
 # ── Generic daily reducers ────────────────────────────────────────────────────
@@ -364,13 +362,28 @@ def build_pai(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def build_sentinel2(df: pd.DataFrame) -> pd.DataFrame:
-    cols = [c for c in df.columns if c.startswith("s2_")]
-    s2 = df[cols].dropna(how="all")
-    s2 = s2[np.isin(s2.index.normalize().date, S2_MANUAL_DATES_2025)]   # clear-sky dates only
-    daily = s2.resample("1D").mean().dropna(how="all")
-    daily.columns = [c.lower() for c in daily.columns]              # s2_NDVI_mean -> s2_ndvi_mean
-    return daily
+def build_sentinel2() -> pd.DataFrame:
+    """Daily clear-sky S2 ROI means from the audited per-scene product (ADR 0012).
+
+    Reads the hand-audited ROI table (`s2_roi_means_by_scene.parquet`), keeps
+    ``verdict == "clear"`` scenes at the canonical 100 m ring for the headline
+    year, and resamples to daily means. Bands/indices are renamed
+    ``<VAR>_r100 -> s2_<var>_mean``. Replaces the retired 33-date filter.
+    """
+    tab = pd.read_parquet(S2_ROI_PARQUET)
+    tab = tab[tab["verdict"] == "clear"].copy()
+    tab["datetime"] = pd.to_datetime(tab["datetime"])
+    tab = tab[tab["datetime"].dt.year == S2_HEADLINE_YEAR]
+
+    suffix = f"_r{S2_RING_M}"
+    val_cols = [
+        c for c in tab.columns if c.endswith(suffix) and c != f"n{suffix}"
+    ]
+    s2 = tab.set_index("datetime")[val_cols].sort_index()
+    s2.columns = [f"s2_{c[: -len(suffix)].lower()}_mean" for c in val_cols]
+    if s2.index.tz is None:
+        s2.index = s2.index.tz_localize("UTC")
+    return s2.resample("1D").mean().dropna(how="all")
 
 
 def build_sentinel1(df: pd.DataFrame) -> pd.DataFrame:
@@ -415,7 +428,7 @@ def main() -> None:
         "gcc":          lambda: build_gcc(df),
         "phenocam":     lambda: build_phenocam(),
         "pai":          lambda: build_pai(df),
-        "sentinel2":    lambda: build_sentinel2(df),
+        "sentinel2":    lambda: build_sentinel2(),
         "sentinel1":    lambda: build_sentinel1(df),
     }
 

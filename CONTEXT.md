@@ -123,3 +123,77 @@ distinct sources, kept separate because they can disagree by several degrees in 
 
 _Avoid_: "the up curve" (unqualified — say *smoothed up lookup* or *manual up reference*); calling the
 manual curve "self-calibration" (that was the rejected fragile per-scan seam-fit, not the hand check).
+
+### Satellite clear-sky (Sentinel-2)
+
+**S2 scene**:
+A single Sentinel-2 overpass of the DE-Har tile, keyed by its exact acquisition *datetime*. The
+**unit of the clear-sky audit** — because Hartheim sits in the overlap of two relative orbits, a
+calendar *date* can carry **two scenes** with different view geometry and cloud cover, so a scene,
+not a date, is judged.
+_Avoid_: "S2 date" as the audit unit (a date may bundle two scenes); "pass"/"image" (unqualified).
+
+**Clear-sky audit**:
+The **hand review of every S2 scene** for cloud/quality over the tower ROI, recorded as an
+*audit verdict* in `s2_audit.csv`. It is the project's **single cloud filter** — the raw archive is
+re-exported with SCL/s2cloudless masking **off** so the eye, not an automated mask, decides which
+scenes are usable (same manual-over-automated stance as the *Manual up reference*). It is the
+**canonical S2 source** (ADR 0012): the daily table reads the audited per-scene ROI product and takes
+`verdict == clear`; the old `S2_MANUAL_DATES_2025` date list and the masked `*_indices.nc` re-reduce
+are removed.
+_Avoid_: "cloud mask" (that is the rejected automated SCL path); treating SCL/s2cloudless as the
+usability decision.
+
+**Audit verdict**:
+The per-scene ROI judgement, a three-level ordinal: **clear** (ROI unobscured — usable in headline),
+**partial** (thin haze / cloud edge in ROI — sensitivity only), **cloud** (ROI obscured — reject).
+Headline stages consume `clear` only. Carries optional flags (snow, shadow, haze) and a note.
+_Avoid_: binary pass/fail (loses the *partial* middle ground); a *partial* scene silently entering a
+headline number.
+
+**S2 ROI ring**:
+A circular buffer around the tower over which S2 pixels are averaged. Canonical science radius is
+**100 m** (`analysis_config.yaml`); **30 m** is the GNSS-T VOD-footprint match, **50 m** a sensitivity
+radius. The **500 m** ring is **QA / spatial-context only** — at ~78 ha it mixes the dying-pine stand,
+broadleaf edges, roads and floodplain, so its mean is not a tower-stand canopy value and never feeds a
+headline number.
+_Avoid_: treating the 500 m ROI mean as a canopy signal; changing the canonical radius away from 100 m
+without updating `analysis_config.yaml` and the bound citation.
+
+### Radar backscatter (Sentinel-1)
+
+**S1 backscatter (VV, VH)**:
+Dual-pol σ⁰ from Sentinel-1 IW GRD. All averaging and speckle filtering happen in **linear power**
+(the playground starts from `S1_GRD_FLOAT`); **dB** (10·log₁₀) is only a display/interpretation
+transform applied *last*. The `angle` band is the per-pixel incidence angle.
+_Avoid_: averaging or speckle-filtering in dB (the current GEE download's 15 m focal median is done
+in dB — a bug the playground exists to expose); calling the GEE per-pass export "raw" (it is already
+angle-normalised + speckle-filtered).
+
+**Cross-ratio (CR)**:
+`VH/VV` in linear (equivalently `VH_dB − VV_dB`). The vegetation-sensitive backscatter ratio; being a
+ratio it is **offset-invariant**, so a constant angle-normalisation shift cancels out of it.
+_Avoid_: "ratio" unqualified; the inverted `VV/VH`.
+
+**SPAN / RVI**:
+**SPAN** = total power `VV + VH` (linear). **RVI** = Radar Vegetation Index `4·VH/(VV + VH)` (linear).
+_Avoid_: computing either in dB.
+
+**Orbit handling**:
+Ascending and descending are **never blended**, and distinct **relative orbits** are kept separate —
+their geometry and incidence angle differ. DE-Har is covered by **two relative orbits per direction**,
+at different incidence angles over the ROI: ascending 15 = 32.2°, 88 = 41.8°; descending 66 = 44.0°,
+139 = 34.8°. Within a single relative orbit the incidence angle barely varies over the ROI, so **angle
+normalisation is a near-constant offset there**; it only changes the signal when combining orbits/swaths
+(a ~10° step here). The **descending** pass is the ~05:41 UTC **morning** acquisition (overnight-
+rehydrated / near-predawn state — pre-sunrise only in the winter half-year); **ascending** is the ~17:22
+UTC evening/depleted pass. **Canonical S1 = the transparent GRD_FLOAT product** (ADR 0011): a single
+relative orbit per direction — **descending 139** (morning, ~35°) + **ascending 15** (evening, ~32° —
+the asc orbit closest in incidence to 139, so the two form a comparable diurnal pair). Linear-domain
+processing, ROI mean over 50/100/200 m, temporal moving-mean windows raw + w3…w13; the **headline
+series is 100 m, w5** (~30 d). The **sentle** weekly composite (ADR 0001) and the old angle-normalised
+GEE per-pass export are **retired** — their pipelines were opaque; this one is fully in-repo.
+_Avoid_: mixing asc+desc or multiple relative orbits into one series; copying another site's "orbit 66 =
+36°" (relative-orbit incidence is site-specific); assuming angle-norm matters for a single fixed-orbit
+ROI time series (there it is ~a DC shift the z-scores remove); "sentle" or the old `*_indices.nc` as an
+S1 source (both removed).
